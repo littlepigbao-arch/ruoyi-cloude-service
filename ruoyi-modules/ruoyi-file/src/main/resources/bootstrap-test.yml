@@ -1,0 +1,24 @@
+# Tomcat
+server:
+  port: 9300
+
+# Spring
+spring:
+  application:
+    # 应用名称
+    name: ruoyi-file
+  cloud:
+    nacos:
+      discovery:
+        # 服务注册地址
+        server-addr: nacos.zkjiadi.cc
+        namespace: 45c724b0-9b42-4ff2-bff2-9220a1788392
+      config:
+        # 配置中心地址
+        server-addr: nacos.zkjiadi.cc
+        # 配置文件格式
+        file-extension: yml
+        # 共享配置
+        shared-configs:
+          - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
+        namespace: 45c724b0-9b42-4ff2-bff2-9220a1788392
