@@ -23,3 +23,25 @@ spring:
         # 共享配置
         shared-configs:
           - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
+---
+#测试环境
+spring:
+  application:
+    # 应用名称
+    name: ruoyi-auth
+  profiles:
+    # 环境配置
+    active: test
+  cloud:
+    nacos:
+      discovery:
+        # 服务注册地址
+        server-addr: nacos.zkjiadi.cc
+      config:
+        # 配置中心地址
+        server-addr: nacos.zkjiadi.cc
+        # 配置文件格式
+        file-extension: yml
+        # 共享配置
+        shared-configs:
+          - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
