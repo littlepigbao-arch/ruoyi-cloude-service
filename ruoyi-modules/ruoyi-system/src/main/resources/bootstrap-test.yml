@@ -12,6 +12,8 @@ spring:
         # 服务注册地址
         server-addr: nacos.zkjiadi.cc
         namespace: 45c724b0-9b42-4ff2-bff2-9220a1788392
+        username: nacos
+        password: u0uM2RIp3Xle9VVFWtpzoz9ZdNbwG6PpWsjrOVphXzlDc0jA
       config:
         # 配置中心地址
         server-addr: nacos.zkjiadi.cc
@@ -21,3 +23,5 @@ spring:
         shared-configs:
           - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
         namespace: 45c724b0-9b42-4ff2-bff2-9220a1788392
+        username: nacos
+        password: u0uM2RIp3Xle9VVFWtpzoz9ZdNbwG6PpWsjrOVphXzlDc0jA
