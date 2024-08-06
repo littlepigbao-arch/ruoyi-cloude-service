@@ -11,14 +11,18 @@ spring:
     nacos:
       discovery:
         # 服务注册地址
-        server-addr: nacos.zkjiadi.cc
+        server-addr: local-nacos.zkjiadi.cc
         namespace: 78a7f41e-46cc-437a-9716-735888227693
+        username: nacos
+        password: u0uM2RIp3Xle9VVFWtpzoz9ZdNbwG6PpWsjrOVphXzlDc0jA
       config:
         # 配置中心地址
-        server-addr: nacos.zkjiadi.cc
+        server-addr: local-nacos.zkjiadi.cc
         # 配置文件格式
         file-extension: yml
         # 共享配置
         shared-configs:
           - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
         namespace: 78a7f41e-46cc-437a-9716-735888227693
+        username: nacos
+        password: u0uM2RIp3Xle9VVFWtpzoz9ZdNbwG6PpWsjrOVphXzlDc0jA
