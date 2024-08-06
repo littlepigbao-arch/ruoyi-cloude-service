@@ -34,6 +34,9 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
     @Resource(name = "captchaProducerMath")
     private Producer captchaProducerMath;
 
+    @Resource(name = "captchaProducerNumber")
+    private Producer captchaProducerNumber;
+
     @Autowired
     private RedisService redisService;
 
@@ -63,17 +66,24 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
 
         String captchaType = captchaProperties.getType();
         // 生成验证码
-        if ("math".equals(captchaType))
-        {
-            String capText = captchaProducerMath.createText();
-            capStr = capText.substring(0, capText.lastIndexOf("@"));
-            code = capText.substring(capText.lastIndexOf("@") + 1);
-            image = captchaProducerMath.createImage(capStr);
-        }
-        else if ("char".equals(captchaType))
-        {
-            capStr = code = captchaProducer.createText();
-            image = captchaProducer.createImage(capStr);
+        switch (captchaType) {
+            case "number": {
+                capStr = code = captchaProducerNumber.createText();
+                image = captchaProducerNumber.createImage(capStr);
+            }
+            break;
+            case "math": {
+                String capText = captchaProducerMath.createText();
+                capStr = capText.substring(0, capText.lastIndexOf("@"));
+                code = capText.substring(capText.lastIndexOf("@") + 1);
+                image = captchaProducerMath.createImage(capStr);
+            }
+            break;
+            default: {
+                capStr = code = captchaProducer.createText();
+                image = captchaProducer.createImage(capStr);
+            }
+            break;
         }
 
         redisService.setCacheObject(verifyKey, code, Constants.CAPTCHA_EXPIRATION, TimeUnit.MINUTES);
