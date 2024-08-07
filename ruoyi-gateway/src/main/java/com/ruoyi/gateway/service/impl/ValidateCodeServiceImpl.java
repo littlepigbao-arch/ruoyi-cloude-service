@@ -103,6 +103,25 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
         return ajax;
     }
 
+    @Override
+    public AjaxResult createSMSCaptcha(String receiver) throws IOException, CaptchaException {
+        AjaxResult ajax = AjaxResult.success();
+        boolean captchaEnabled = captchaProperties.getEnabled();
+        ajax.put("captchaEnabled", captchaEnabled);
+        if (!captchaEnabled)
+        {
+            return ajax;
+        }
+        // 保存验证码信息
+        String uuid = IdUtils.simpleUUID();
+        String verifyKey = CacheConstants.CAPTCHA_CODE_KEY + uuid;
+        String code = captchaProducerNumber.createText();
+        redisService.setCacheObject(verifyKey, code, Constants.CAPTCHA_EXPIRATION, TimeUnit.MINUTES);
+        ajax.put("code", code);
+        ajax.put("uuid", uuid);
+        return ajax;
+    }
+
     /**
      * 校验验证码
      */

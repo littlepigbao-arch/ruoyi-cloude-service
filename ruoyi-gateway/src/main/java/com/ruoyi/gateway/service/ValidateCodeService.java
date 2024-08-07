@@ -12,9 +12,14 @@ import com.ruoyi.common.core.web.domain.AjaxResult;
 public interface ValidateCodeService
 {
     /**
-     * 生成验证码
+     * 生成图片验证码
      */
     public AjaxResult createCaptcha() throws IOException, CaptchaException;
+
+    /**
+     * 生成短信验证码
+     */
+    public AjaxResult createSMSCaptcha(String receiver) throws IOException, CaptchaException;
 
     /**
      * 校验验证码
