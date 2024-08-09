@@ -33,6 +33,15 @@ public interface RemoteUserService
     public R<LoginUser> getUserInfo(@PathVariable("username") String username, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
 
     /**
+     * 通过手机号查询用户信息
+     *
+     * @param phoneNumber 用户名
+     * @param source 请求来源
+     * @return 结果
+     */
+    @GetMapping("/user/info/phoneNumber/{phoneNumber:\\d+}")
+    public R<LoginUser> getUserInfoByPhoneNumber(@PathVariable("phoneNumber") String phoneNumber, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    /**
      * 注册用户信息
      *
      * @param sysUser 用户信息
