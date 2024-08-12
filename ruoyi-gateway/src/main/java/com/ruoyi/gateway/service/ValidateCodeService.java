@@ -19,7 +19,7 @@ public interface ValidateCodeService
     /**
      * 生成短信验证码
      */
-    public AjaxResult createSMSCaptcha(String receiver) throws IOException, CaptchaException;
+    public AjaxResult createSMSCaptcha(String receiver,String uuid) throws IOException, CaptchaException;
 
     /**
      * 校验验证码
