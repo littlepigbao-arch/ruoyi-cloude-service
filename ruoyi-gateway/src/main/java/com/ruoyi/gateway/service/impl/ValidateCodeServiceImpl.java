@@ -123,7 +123,6 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
         if (expire <= 0) {
             String code = captchaProducerNumber.createText();
             redisService.setCacheObject(verifyKey, code, Constants.CAPTCHA_EXPIRATION, TimeUnit.MINUTES);
-            ajax.put("code", code);
             expire = redisService.getExpire(verifyKey);
             AliyunUtils.sendSms(
                     smsAliyuncs.getAccessKeyId(),
