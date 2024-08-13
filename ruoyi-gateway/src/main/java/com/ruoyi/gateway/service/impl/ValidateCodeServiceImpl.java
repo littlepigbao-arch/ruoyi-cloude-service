@@ -5,6 +5,9 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 import javax.imageio.ImageIO;
+
+import com.alibaba.fastjson2.JSONObject;
+import com.ujcms.commons.sms.AliyunUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.FastByteArrayOutputStream;
@@ -42,6 +45,9 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
 
     @Autowired
     private CaptchaProperties captchaProperties;
+
+    @Autowired
+    private CaptchaProperties.SMS.Aliyuncs smsAliyuncs;
 
     /**
      * 生成验证码
@@ -112,13 +118,21 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
             return ajax;
         }
         // 保存验证码信息
-        String verifyKey = CacheConstants.CAPTCHA_CODE_KEY + uuid;
+        String verifyKey = CacheConstants.CAPTCHA_CODE_KEY + receiver + ":" + uuid;
         long expire = redisService.getExpire(verifyKey);
         if (expire <= 0) {
             String code = captchaProducerNumber.createText();
             redisService.setCacheObject(verifyKey, code, Constants.CAPTCHA_EXPIRATION, TimeUnit.MINUTES);
             ajax.put("code", code);
             expire = redisService.getExpire(verifyKey);
+            AliyunUtils.sendSms(
+                    smsAliyuncs.getAccessKeyId(),
+                    smsAliyuncs.getAccessKeySecret(),
+                    smsAliyuncs.getSignName(),
+                    smsAliyuncs.getTemplateCode(),
+                    JSONObject.of("code", code),
+                    receiver
+            );
         }
         ajax.put("expire", expire);
         ajax.put("uuid", uuid);
