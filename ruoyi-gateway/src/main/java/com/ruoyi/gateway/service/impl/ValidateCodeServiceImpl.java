@@ -2,6 +2,7 @@ package com.ruoyi.gateway.service.impl;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 import javax.imageio.ImageIO;
@@ -9,6 +10,7 @@ import javax.imageio.ImageIO;
 import com.alibaba.fastjson2.JSONObject;
 import com.ujcms.commons.sms.AliyunUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.util.FastByteArrayOutputStream;
 import com.google.code.kaptcha.Producer;
@@ -48,6 +50,9 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
 
     @Autowired
     private CaptchaProperties.SMS.Aliyuncs smsAliyuncs;
+
+    @Autowired
+    private Environment environment;
 
     /**
      * 生成验证码
@@ -124,14 +129,18 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
             String code = captchaProducerNumber.createText();
             redisService.setCacheObject(verifyKey, code, Constants.CAPTCHA_EXPIRATION, TimeUnit.MINUTES);
             expire = redisService.getExpire(verifyKey);
-            AliyunUtils.sendSms(
-                    smsAliyuncs.getAccessKeyId(),
-                    smsAliyuncs.getAccessKeySecret(),
-                    smsAliyuncs.getSignName(),
-                    smsAliyuncs.getTemplateCode(),
-                    JSONObject.of("code", code),
-                    receiver
-            );
+            if (Arrays.stream(environment.getActiveProfiles()).toList().contains("prod")) {
+                AliyunUtils.sendSms(
+                        smsAliyuncs.getAccessKeyId(),
+                        smsAliyuncs.getAccessKeySecret(),
+                        smsAliyuncs.getSignName(),
+                        smsAliyuncs.getTemplateCode(),
+                        JSONObject.of("code", code),
+                        receiver
+                );
+            } else {
+                ajax.put("captchaCode",code);
+            }
         }
         ajax.put("expire", expire);
         ajax.put("uuid", uuid);
