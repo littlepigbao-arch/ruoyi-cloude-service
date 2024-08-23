@@ -154,6 +154,25 @@ public class SysUserController extends BaseController
     }
 
     /**
+     * 根据ID获取用户信息
+     */
+    @InnerAuth
+    @GetMapping("/detail/{userId}")
+    public R<LoginUser> infoById(@PathVariable("userId") Long userId)
+    {
+        SysUser sysUser = userService.selectUserById(userId);
+        // 角色集合
+        Set<String> roles = permissionService.getRolePermission(sysUser);
+        // 权限集合
+        Set<String> permissions = permissionService.getMenuPermission(sysUser);
+        LoginUser sysUserVo = new LoginUser();
+        sysUserVo.setSysUser(sysUser);
+        sysUserVo.setRoles(roles);
+        sysUserVo.setPermissions(permissions);
+        return R.ok(sysUserVo);
+    }
+
+    /**
      * 注册用户信息
      */
     @InnerAuth

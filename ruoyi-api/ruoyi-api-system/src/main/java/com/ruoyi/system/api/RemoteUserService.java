@@ -29,8 +29,8 @@ public interface RemoteUserService
      * @param source 请求来源
      * @return 结果
      */
-    @GetMapping("/user/{userId}")
-    public R<LoginUser> getInfo(@PathVariable("userId") Long userId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    @GetMapping("/detail/{userId}")
+    public R<LoginUser> infoById(@PathVariable("userId") Long userId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
     /**
      * 通过用户名查询用户信息
      *
