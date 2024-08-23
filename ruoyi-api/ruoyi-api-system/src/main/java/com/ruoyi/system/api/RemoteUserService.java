@@ -23,6 +23,15 @@ import com.ruoyi.system.api.model.LoginUser;
 public interface RemoteUserService
 {
     /**
+     * 通过用户ID查询用户信息
+     *
+     * @param userId 用户ID
+     * @param source 请求来源
+     * @return 结果
+     */
+    @GetMapping({"/user/", "/user/{userId}"})
+    public R<LoginUser> getInfo(@PathVariable("userId") Long userId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    /**
      * 通过用户名查询用户信息
      *
      * @param username 用户名
