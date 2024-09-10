@@ -2,11 +2,8 @@ package com.ruoyi.gateway.config
 
 import org.apache.commons.lang3.ObjectUtils
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.cloud.gateway.filter.NettyWriteResponseFilter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.core.Ordered
-import org.springframework.core.annotation.Order
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.WebFilter
@@ -18,7 +15,6 @@ open class CorsConfig {
     private val corsOrgins: String? = null
 
     @Bean
-    @Order(NettyWriteResponseFilter.WRITE_RESPONSE_FILTER_ORDER + 1)
     open fun corsFilter(): WebFilter {
         return WebFilter { exchange, chain ->
             val response = exchange.response
