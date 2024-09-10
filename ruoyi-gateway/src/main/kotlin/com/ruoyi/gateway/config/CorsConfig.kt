@@ -2,8 +2,11 @@ package com.ruoyi.gateway.config
 
 import org.apache.commons.lang3.ObjectUtils
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.cloud.gateway.filter.NettyWriteResponseFilter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.Ordered
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.WebFilter
@@ -15,6 +18,7 @@ open class CorsConfig {
     private val corsOrgins: String? = null
 
     @Bean
+    @Order(NettyWriteResponseFilter.WRITE_RESPONSE_FILTER_ORDER + 1)
     open fun corsFilter(): WebFilter {
         return WebFilter { exchange, chain ->
             val response = exchange.response
@@ -28,8 +32,7 @@ open class CorsConfig {
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Access-Control-Max-Age"] = "3600"
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS,HEAD"
-            response.headers["Access-Control-Allow-Headers"] =
-                "X-Requested-With, Content-Type, Authorization, credential, X-XSRF-TOKEN, token, Admin-Token, App-Token"
+            response.headers["Access-Control-Allow-Headers"] = "*"
             if (HttpMethod.OPTIONS.equals(request.method)) {
                 response.statusCode = HttpStatus.OK
                 chain.filter(exchange)
