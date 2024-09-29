@@ -22,4 +22,6 @@ public class TokenConstants
      */
     public final static String SECRET = "abcdefghijklmnopqrstuvwxyz";
 
+    public final static String WEBSOCKET_HEADER = "Sec-WebSocket-Key";
+
 }

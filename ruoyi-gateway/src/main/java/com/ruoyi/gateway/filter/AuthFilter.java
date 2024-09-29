@@ -1,5 +1,6 @@
 package com.ruoyi.gateway.filter;
 
+import org.apache.commons.lang3.ObjectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -118,7 +119,7 @@ public class AuthFilter implements GlobalFilter, Ordered
      */
     private String getToken(ServerHttpRequest request)
     {
-        String token = request.getHeaders().getFirst(TokenConstants.AUTHENTICATION);
+        String token = ObjectUtils.isNotEmpty(request.getHeaders().getFirst(TokenConstants.WEBSOCKET_HEADER)) ? request.getQueryParams().getFirst(TokenConstants.AUTHENTICATION) : request.getHeaders().getFirst(TokenConstants.AUTHENTICATION);
         // 如果前端设置了令牌前缀，则裁剪掉前缀
         if (StringUtils.isNotEmpty(token) && token.startsWith(TokenConstants.PREFIX))
         {
