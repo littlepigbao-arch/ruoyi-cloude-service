@@ -9,6 +9,7 @@ spring:
   cloud:
     nacos:
       discovery:
+        ip: 47.121.114.255
         # 服务注册地址
         server-addr: nacos.zkjiadi.cc
         namespace: e2708b29-ca15-4f63-a919-d33932ebdfda
