@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.*
  */
 @RestController
 @RequestMapping("/inner/user")
-class InnerSysUserController {
+open class InnerSysUserController {
 
     @Autowired
     lateinit var userService: ISysUserService
