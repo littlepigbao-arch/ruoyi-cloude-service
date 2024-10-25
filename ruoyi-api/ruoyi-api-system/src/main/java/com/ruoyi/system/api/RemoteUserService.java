@@ -1,5 +1,6 @@
 package com.ruoyi.system.api;
 
+import com.ruoyi.system.api.inner.InnerRemoteUserService;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,17 +21,8 @@ import com.ruoyi.system.api.model.LoginUser;
  * @author ruoyi
  */
 @FeignClient(contextId = "remoteUserService", value = ServiceNameConstants.SYSTEM_SERVICE, fallbackFactory = RemoteUserFallbackFactory.class)
-public interface RemoteUserService
+public interface RemoteUserService extends InnerRemoteUserService
 {
-    /**
-     * 通过用户ID查询用户信息
-     *
-     * @param userId 用户ID
-     * @param source 请求来源
-     * @return 结果
-     */
-    @GetMapping("/user/detail/{userId}")
-    public R<LoginUser> infoById(@PathVariable("userId") Long userId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
     /**
      * 通过用户名查询用户信息
      *
@@ -41,15 +33,6 @@ public interface RemoteUserService
     @GetMapping("/user/info/{username}")
     public R<LoginUser> getUserInfo(@PathVariable("username") String username, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
 
-    /**
-     * 通过手机号查询用户信息
-     *
-     * @param phoneNumber 用户名
-     * @param source 请求来源
-     * @return 结果
-     */
-    @GetMapping("/user/info/phoneNumber/{phoneNumber:\\d+}")
-    public R<LoginUser> getUserInfoByPhoneNumber(@PathVariable("phoneNumber") String phoneNumber, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
     /**
      * 注册用户信息
      *

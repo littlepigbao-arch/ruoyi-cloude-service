@@ -1,5 +1,6 @@
 package com.ruoyi.system.api.factory;
 
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.openfeign.FallbackFactory;
@@ -11,7 +12,7 @@ import com.ruoyi.system.api.model.LoginUser;
 
 /**
  * 用户服务降级处理
- * 
+ *
  * @author ruoyi
  */
 @Component
@@ -25,9 +26,9 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
         log.error("用户服务调用失败:{}", throwable.getMessage());
         return new RemoteUserService()
         {
+            @NotNull
             @Override
-            public R<LoginUser> infoById(Long userId, String source)
-            {
+            public R<LoginUser> infoById_Inner(Long userId, @NotNull String source) {
                 return R.fail("获取用户失败:" + throwable.getMessage());
             }
 
@@ -37,8 +38,9 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
                 return R.fail("获取用户失败:" + throwable.getMessage());
             }
 
+            @NotNull
             @Override
-            public R<LoginUser> getUserInfoByPhoneNumber(String phoneNumber, String source) {
+            public R<LoginUser> getUserInfoByPhoneNumber_Inner(@NotNull String phoneNumber, @NotNull String source) {
                 return R.fail("获取用户失败:" + throwable.getMessage());
             }
 
@@ -52,6 +54,12 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
             public R<Boolean> recordUserLogin(SysUser sysUser, String source)
             {
                 return R.fail("记录用户登录信息失败:" + throwable.getMessage());
+            }
+
+            @NotNull
+            @Override
+            public R<LoginUser> edit_Inner(@NotNull LoginUser user, @NotNull String source) {
+                return R.fail("修改用户信息失败:" + throwable.getMessage());
             }
         };
     }
