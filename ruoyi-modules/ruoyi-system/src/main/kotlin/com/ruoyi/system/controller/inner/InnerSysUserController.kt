@@ -97,6 +97,7 @@ open class InnerSysUserController {
             return error("修改用户'" + targetUser.userName + "'失败，邮箱账号已存在")
         }
         originUser.userName = targetUser.userName ?: originUser.userName
+        originUser.nickName = targetUser.nickName ?: originUser.nickName
         originUser.phonenumber = targetUser.phonenumber ?: originUser.phonenumber
         originUser.email = targetUser.email ?: originUser.email
         originUser.avatar = targetUser.avatar ?: originUser.avatar
