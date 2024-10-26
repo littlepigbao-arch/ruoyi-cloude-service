@@ -2,6 +2,8 @@ package com.ruoyi.system.controller.inner
 
 import com.ruoyi.common.core.domain.R
 import com.ruoyi.common.core.utils.StringUtils
+import com.ruoyi.common.core.web.controller.BaseController
+import com.ruoyi.common.core.web.domain.AjaxResult
 import com.ruoyi.common.log.annotation.Log
 import com.ruoyi.common.log.enums.BusinessType
 import com.ruoyi.common.security.annotation.InnerAuth
@@ -22,7 +24,7 @@ import org.springframework.web.bind.annotation.*
  */
 @RestController
 @RequestMapping("/inner/user")
-open class InnerSysUserController {
+open class InnerSysUserController : BaseController() {
 
     @Autowired
     lateinit var userService: ISysUserService
@@ -82,7 +84,7 @@ open class InnerSysUserController {
     @InnerAuth
     @PutMapping
     @Log(title = "用户修改本人信息", businessType = BusinessType.UPDATE)
-    fun edit(@Validated @RequestBody loginUser: LoginUser): R<LoginUser> {
+    fun edit(@Validated @RequestBody loginUser: LoginUser): AjaxResult {
         val originUser = userService.selectUserById(loginUser.userid)
         val targetUser = loginUser.sysUser
         userService.checkUserAllowed(originUser)
@@ -103,6 +105,6 @@ open class InnerSysUserController {
         originUser.avatar = targetUser.avatar ?: originUser.avatar
         originUser.updateBy = originUser.userName
         userService.updateUser(originUser)
-        return R.ok(loginUser)
+        return success(loginUser)
     }
 }
