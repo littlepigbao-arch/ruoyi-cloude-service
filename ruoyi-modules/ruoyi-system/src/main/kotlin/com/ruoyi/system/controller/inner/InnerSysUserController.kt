@@ -27,16 +27,16 @@ import org.springframework.web.bind.annotation.*
 open class InnerSysUserController : BaseController() {
 
     @Autowired
-    lateinit var userService: ISysUserService
+    open lateinit var userService: ISysUserService
 
     @Autowired
-    lateinit var permissionService: ISysPermissionService
+    open lateinit var permissionService: ISysPermissionService
 
     @Autowired
-    lateinit var deptService: ISysDeptService
+    open lateinit var deptService: ISysDeptService
 
     @Autowired
-    lateinit var roleService: ISysRoleService
+    open lateinit var roleService: ISysRoleService
 
 
     /**
@@ -87,10 +87,6 @@ open class InnerSysUserController : BaseController() {
     fun edit(@Validated @RequestBody loginUser: LoginUser): AjaxResult {
         val originUser = userService.selectUserById(loginUser.userid)
         val targetUser = loginUser.sysUser
-        userService.checkUserAllowed(originUser)
-        userService.checkUserDataScope(originUser.userId)
-        deptService.checkDeptDataScope(originUser.deptId)
-        roleService.checkRoleDataScope(*originUser.roleIds)
         if (!userService.checkUserNameUnique(targetUser)) {
             return error("修改用户'" + targetUser.userName + "'失败，登录账号已存在")
         } else if (StringUtils.isNotEmpty(targetUser.phonenumber) && !userService.checkPhoneUnique(targetUser)) {
