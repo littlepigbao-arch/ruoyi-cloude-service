@@ -7,11 +7,10 @@ import com.ruoyi.common.core.web.domain.AjaxResult
 import com.ruoyi.common.log.annotation.Log
 import com.ruoyi.common.log.enums.BusinessType
 import com.ruoyi.common.security.annotation.InnerAuth
+import com.ruoyi.common.security.service.TokenService
 import com.ruoyi.system.api.domain.SysUser
 import com.ruoyi.system.api.model.LoginUser
-import com.ruoyi.system.service.ISysDeptService
 import com.ruoyi.system.service.ISysPermissionService
-import com.ruoyi.system.service.ISysRoleService
 import com.ruoyi.system.service.ISysUserService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.validation.annotation.Validated
@@ -33,10 +32,7 @@ open class InnerSysUserController : BaseController() {
     open lateinit var permissionService: ISysPermissionService
 
     @Autowired
-    open lateinit var deptService: ISysDeptService
-
-    @Autowired
-    open lateinit var roleService: ISysRoleService
+    open lateinit var tokenService: TokenService
 
 
     /**
@@ -99,8 +95,11 @@ open class InnerSysUserController : BaseController() {
         originUser.phonenumber = targetUser.phonenumber ?: originUser.phonenumber
         originUser.email = targetUser.email ?: originUser.email
         originUser.avatar = targetUser.avatar ?: originUser.avatar
+        originUser.sex = targetUser.sex ?: originUser.sex
         originUser.updateBy = originUser.userName
         userService.updateUser(originUser)
+        // 更新缓存用户信息
+        tokenService.setLoginUser(loginUser)
         return success(loginUser)
     }
 }
