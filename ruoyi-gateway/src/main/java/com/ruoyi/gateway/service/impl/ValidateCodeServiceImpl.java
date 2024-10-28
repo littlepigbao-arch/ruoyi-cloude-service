@@ -141,6 +141,7 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
             } else {
                 ajax.put("captchaCode",code);
             }
+            ajax.put("codeLength", code.length());
         }
         ajax.put("expire", expire);
         ajax.put("uuid", uuid);

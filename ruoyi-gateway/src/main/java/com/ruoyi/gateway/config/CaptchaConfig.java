@@ -2,6 +2,7 @@ package com.ruoyi.gateway.config;
 
 import java.util.Properties;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.google.code.kaptcha.impl.DefaultKaptcha;
@@ -16,6 +17,9 @@ import static com.google.code.kaptcha.Constants.*;
  */
 @Configuration
 public class CaptchaConfig {
+    @Value("${" + KAPTCHA_TEXTPRODUCER_CHAR_LENGTH + "}")
+    private String textProducerCharLength;
+
     @Bean(name = "captchaProducer")
     public DefaultKaptcha getKaptchaBean() {
         DefaultKaptcha defaultKaptcha = new DefaultKaptcha();
@@ -33,7 +37,7 @@ public class CaptchaConfig {
         // KAPTCHA_SESSION_KEY
         properties.setProperty(KAPTCHA_SESSION_CONFIG_KEY, "kaptchaCode");
         // 验证码文本字符长度 默认为5
-        properties.setProperty(KAPTCHA_TEXTPRODUCER_CHAR_LENGTH, "4");
+        properties.setProperty(KAPTCHA_TEXTPRODUCER_CHAR_LENGTH, textProducerCharLength);
         // 验证码文本字体样式 默认为new Font("Arial", 1, fontSize), new Font("Courier", 1, fontSize)
         properties.setProperty(KAPTCHA_TEXTPRODUCER_FONT_NAMES, "Arial,Courier");
         // 图片样式 水纹com.google.code.kaptcha.impl.WaterRipple 鱼眼com.google.code.kaptcha.impl.FishEyeGimpy 阴影com.google.code.kaptcha.impl.ShadowGimpy
@@ -99,7 +103,7 @@ public class CaptchaConfig {
         // 验证码文本生成器
         properties.setProperty(KAPTCHA_TEXTPRODUCER_IMPL, com.ruoyi.gateway.config.KaptchaNumberCreator.class.getName());
         // 验证码文本字符长度 默认为5
-        properties.setProperty(KAPTCHA_TEXTPRODUCER_CHAR_LENGTH, "4");
+        properties.setProperty(KAPTCHA_TEXTPRODUCER_CHAR_LENGTH, textProducerCharLength);
         // 验证码文本字体样式 默认为new Font("Arial", 1, fontSize), new Font("Courier", 1, fontSize)
         properties.setProperty(KAPTCHA_TEXTPRODUCER_FONT_NAMES, "Arial,Courier");
         // 图片样式 水纹com.google.code.kaptcha.impl.WaterRipple 鱼眼com.google.code.kaptcha.impl.FishEyeGimpy 阴影com.google.code.kaptcha.impl.ShadowGimpy
