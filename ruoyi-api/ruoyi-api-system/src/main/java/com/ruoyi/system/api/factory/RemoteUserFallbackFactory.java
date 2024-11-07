@@ -1,5 +1,6 @@
 package com.ruoyi.system.api.factory;
 
+import com.github.pagehelper.Page;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,11 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
             @NotNull
             @Override
             public R<LoginUser> getUserInfoByPhoneNumber_Inner(@NotNull String phoneNumber, @NotNull String source) {
+                return R.fail("获取用户失败:" + throwable.getMessage());
+            }
+
+            @Override
+            public R<Page<SysUser>> findByPhoneNumberStartingWith_Inner(String phoneNumber, String source) {
                 return R.fail("获取用户失败:" + throwable.getMessage());
             }
 
