@@ -914,7 +914,7 @@ export default {
   data() {
     return {
       // 版本号
-      version: "3.6.41.0.3",
+      version: "3.6.41.0.4",
     };
   },
   methods: {

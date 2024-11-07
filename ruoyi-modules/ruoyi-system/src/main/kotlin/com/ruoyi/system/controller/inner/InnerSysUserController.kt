@@ -1,5 +1,6 @@
 package com.ruoyi.system.controller.inner
 
+import com.github.pagehelper.Page
 import com.ruoyi.common.core.domain.R
 import com.ruoyi.common.core.utils.StringUtils
 import com.ruoyi.common.core.web.controller.BaseController
@@ -54,6 +55,15 @@ open class InnerSysUserController : BaseController() {
         sysUserVo.roles = roles
         sysUserVo.permissions = permissions
         return R.ok(sysUserVo)
+    }
+
+    /**
+     * 获取当前用户信息
+     */
+    @InnerAuth
+    @GetMapping("/list/phoneNumber/{phoneNumber:\\d+}")
+    fun findByPhoneNumberStartingWith(@PathVariable("phoneNumber") phoneNumber: String?): R<Page<SysUser>> {
+        return R.ok(userService.findByPhoneNumberStartingWith(phoneNumber))
     }
 
     /**

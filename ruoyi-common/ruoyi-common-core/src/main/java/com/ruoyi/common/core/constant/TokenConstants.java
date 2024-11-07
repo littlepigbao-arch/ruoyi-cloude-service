@@ -16,7 +16,4 @@ public class TokenConstants
      * 令牌秘钥
      */
     public final static String SECRET = "abcdefghijklmnopqrstuvwxyz";
-
-    public final static String WEBSOCKET_HEADER = "Sec-WebSocket-Key";
-
 }

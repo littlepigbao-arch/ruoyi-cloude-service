@@ -1,6 +1,8 @@
 package com.ruoyi.system.mapper;
 
 import java.util.List;
+
+import com.github.pagehelper.Page;
 import org.apache.ibatis.annotations.Param;
 import com.ruoyi.system.api.domain.SysUser;
 
@@ -50,6 +52,14 @@ public interface SysUserMapper
      * @return 用户对象信息
      */
     public SysUser selectUserByPhoneNumber(String phoneNumber);
+
+    /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 手机号
+     * @return 用户对象信息
+     */
+    public Page<SysUser> findByPhoneNumberStartingWith(String phoneNumber);
 
     /**
      * 通过用户ID查询用户

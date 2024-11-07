@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.validation.Validator;
+
+import com.github.pagehelper.Page;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -125,6 +127,17 @@ public class SysUserServiceImpl implements ISysUserService
     @Override
     public SysUser selectUserByPhoneNumber(String phoneNumber) {
         return userMapper.selectUserByPhoneNumber(phoneNumber);
+    }
+
+    /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 手机号
+     * @return 用户对象信息
+     */
+    @Override
+    public Page<SysUser> findByPhoneNumberStartingWith(String phoneNumber) {
+        return userMapper.findByPhoneNumberStartingWith(phoneNumber);
     }
 
     /**

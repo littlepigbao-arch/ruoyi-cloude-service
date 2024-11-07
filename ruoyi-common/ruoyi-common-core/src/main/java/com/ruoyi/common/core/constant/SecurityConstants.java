@@ -23,6 +23,11 @@ public class SecurityConstants
     public static final String AUTHORIZATION_HEADER = "Authorization";
 
     /**
+     * WEBSOCKET头字段
+     */
+    public final static String WEBSOCKET_HEADER = "Sec-WebSocket-Key";
+
+    /**
      * 请求来源
      */
     public static final String FROM_SOURCE = "from-source";
