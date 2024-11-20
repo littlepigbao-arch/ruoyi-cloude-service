@@ -11,6 +11,8 @@ import com.ruoyi.common.security.annotation.InnerAuth
 import com.ruoyi.common.security.service.TokenService
 import com.ruoyi.system.api.domain.SysUser
 import com.ruoyi.system.api.model.LoginUser
+import com.ruoyi.system.service.IKSysUserService
+import com.ruoyi.system.service.ISysConfigService
 import com.ruoyi.system.service.ISysPermissionService
 import com.ruoyi.system.service.ISysUserService
 import org.springframework.beans.factory.annotation.Autowired
@@ -30,10 +32,16 @@ open class InnerSysUserController : BaseController() {
     open lateinit var userService: ISysUserService
 
     @Autowired
+    open lateinit var kSysUserService: IKSysUserService
+
+    @Autowired
     open lateinit var permissionService: ISysPermissionService
 
     @Autowired
     open lateinit var tokenService: TokenService
+
+    @Autowired
+    open lateinit var configService: ISysConfigService
 
 
     /**
@@ -85,6 +93,27 @@ open class InnerSysUserController : BaseController() {
     }
 
     /**
+     * 根据微信unionid获取用户信息
+     */
+    @InnerAuth
+    @GetMapping("/detail/wx/unionid/{unionid}")
+    fun infoByWxUnionId(@PathVariable("unionid") unionid: String): R<LoginUser> {
+        val sysUser = kSysUserService.selectUserByWxUnionId(unionid)
+        if (StringUtils.isNull(sysUser)) {
+            return R.fail("wx_unionid错误")
+        }
+        // 角色集合
+        val roles: Set<String> = permissionService.getRolePermission(sysUser)
+        // 权限集合
+        val permissions: Set<String> = permissionService.getMenuPermission(sysUser)
+        val sysUserVo = LoginUser()
+        sysUserVo.sysUser = sysUser
+        sysUserVo.roles = roles
+        sysUserVo.permissions = permissions
+        return R.ok(sysUserVo)
+    }
+
+    /**
      * 修改用户
      */
     @InnerAuth
@@ -111,5 +140,23 @@ open class InnerSysUserController : BaseController() {
         // 更新缓存用户信息
         tokenService.setLoginUser(loginUser)
         return success(loginUser)
+    }
+
+    /**
+     * 注册用户信息
+     */
+    @InnerAuth
+    @PostMapping("/register/wx/unionid")
+    fun registerUserByWxUnionId(@RequestBody params: Map<String, String?>): R<Boolean> {
+        if (!("true" == configService.selectConfigByKey("sys.account.registerUser"))) {
+            return R.fail("当前系统没有开启注册功能！")
+        }
+        val unionid = params.get("unionId")
+        val deptId = params.get("deptId")?.toLong()
+        if (unionid == null) return R.fail("微信unionid不存在无法注册")
+        if (!kSysUserService.checkWxUnionIdUnique(unionid)) {
+            return R.fail("保存用户'$unionid'失败，注册账号已存在")
+        }
+        return R.ok(kSysUserService.registerUserByWxUnionId(unionid, deptId))
     }
 }

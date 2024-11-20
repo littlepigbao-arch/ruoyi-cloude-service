@@ -11,6 +11,8 @@ import com.ruoyi.system.api.RemoteUserService;
 import com.ruoyi.system.api.domain.SysUser;
 import com.ruoyi.system.api.model.LoginUser;
 
+import java.util.Map;
+
 /**
  * 用户服务降级处理
  *
@@ -29,7 +31,12 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
         {
             @NotNull
             @Override
-            public R<LoginUser> infoById_Inner(Long userId, @NotNull String source) {
+            public R<LoginUser> getById_Inner(Long userId, @NotNull String source) {
+                return R.fail("获取用户失败:" + throwable.getMessage());
+            }
+
+            @Override
+            public R<LoginUser> getByWxUnionId_Inner(String unionid, String source) {
                 return R.fail("获取用户失败:" + throwable.getMessage());
             }
 
@@ -41,7 +48,7 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
 
             @NotNull
             @Override
-            public R<LoginUser> getUserInfoByPhoneNumber_Inner(@NotNull String phoneNumber, @NotNull String source) {
+            public R<LoginUser> getByPhoneNumber_Inner(@NotNull String phoneNumber, @NotNull String source) {
                 return R.fail("获取用户失败:" + throwable.getMessage());
             }
 
@@ -66,6 +73,11 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
             @Override
             public R<LoginUser> edit_Inner(@NotNull LoginUser user, @NotNull String source) {
                 return R.fail("修改用户信息失败:" + throwable.getMessage());
+            }
+
+            @Override
+            public R<Boolean> registerUserByWxUnionId_Inner(Map<String, String> params, String source) {
+                return R.fail("注册用户失败:" + throwable.getMessage());
             }
         };
     }
