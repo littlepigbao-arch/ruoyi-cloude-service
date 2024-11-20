@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.ruoyi</groupId>
         <artifactId>ruoyi-modules</artifactId>
-        <version>3.6.41.0.4</version>
+        <version>3.6.5</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -40,13 +40,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-
+        
         <!-- SpringBoot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-
+		
         <!-- FastDFS -->
         <dependency>
             <groupId>com.github.tobato</groupId>
@@ -64,12 +64,6 @@
         <dependency>
             <groupId>com.ruoyi</groupId>
             <artifactId>ruoyi-api-system</artifactId>
-        </dependency>
-        
-        <!-- RuoYi Common Swagger -->
-        <dependency>
-            <groupId>com.ruoyi</groupId>
-            <artifactId>ruoyi-common-swagger</artifactId>
         </dependency>
         
     </dependencies>
