@@ -8,10 +8,12 @@ import com.ruoyi.system.mapper.KSysUserMapper
 import com.ruoyi.system.service.IKSysUserService
 import com.ruoyi.system.service.ISysUserService
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 
 @Service
 open class KSysUserServiceImpl : IKSysUserService {
+    @Lazy
     @Autowired
     lateinit var sysUserService: ISysUserService
 
