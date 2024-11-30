@@ -2,10 +2,12 @@ package com.ruoyi.system.service.impl;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.validation.Validator;
 
 import com.github.pagehelper.Page;
+import com.ruoyi.system.service.IKSysUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +47,9 @@ public class SysUserServiceImpl implements ISysUserService
 
     @Autowired
     private SysUserMapper userMapper;
+
+    @Autowired
+    private IKSysUserService kSysUserService;
 
     @Autowired
     private SysRoleMapper roleMapper;
@@ -324,6 +329,11 @@ public class SysUserServiceImpl implements ISysUserService
         userPostMapper.deleteUserPostByUserId(userId);
         // 新增用户与岗位管理
         insertUserPost(user);
+        // 重绑定微信信息
+        if (Objects.nonNull(user.getSysUserAccount()) && Objects.nonNull(user.getSysUserAccount().getWxUnionId())) {
+            kSysUserService.unBindWxUnionIdByUserId(userId);
+            kSysUserService.bindWxUnionIdByUserId(userId, user.getSysUserAccount().getWxUnionId());
+        }
         return userMapper.updateUser(user);
     }
 

@@ -37,10 +37,38 @@ open class KSysUserServiceImpl : IKSysUserService {
         }
         return sysUserService.registerUser(user).apply {
             sysUserService.selectUserByUserName(user.userName)
-            kSysUserMapper.insert(mapOf(
-                "userId" to user.userId,
-                "wxUnionId" to wxUnionId,
-            ))
+            kSysUserMapper.insertSysUserAccount(
+                mapOf(
+                    "userId" to user.userId,
+                    "wxUnionId" to wxUnionId,
+                )
+            )
         }
+    }
+
+    override fun bindWxUnionIdByUserId(userId: Long, wxUnionId: String): Int {
+        if (sysUserService.selectUserById(userId).sysUserAccount != null)
+            return kSysUserMapper.updateSysUserAccount(
+                mapOf(
+                    "userId" to userId,
+                    "wxUnionId" to wxUnionId,
+                )
+            )
+        else
+            return kSysUserMapper.insertSysUserAccount(
+                mapOf(
+                    "userId" to userId,
+                    "wxUnionId" to wxUnionId,
+                )
+            )
+    }
+
+    override fun unBindWxUnionIdByUserId(userId: Long): Int {
+        return kSysUserMapper.updateSysUserAccount(
+            mapOf(
+                "userId" to userId,
+                "wxUnionId" to null,
+            )
+        )
     }
 }

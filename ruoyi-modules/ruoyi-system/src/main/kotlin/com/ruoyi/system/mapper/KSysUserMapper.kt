@@ -24,5 +24,7 @@ interface KSysUserMapper {
      */
     fun checkWxUnionIdUnique(wxUnionId: String): SysUser?
 
-    fun insert(params: Map<String, Any>): Int
+    fun insertSysUserAccount(params: Map<String, Any>): Int
+
+    fun updateSysUserAccount(params: Map<String, Any?>): Int
 }

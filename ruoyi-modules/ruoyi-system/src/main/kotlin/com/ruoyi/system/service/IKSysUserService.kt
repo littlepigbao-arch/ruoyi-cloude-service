@@ -28,4 +28,12 @@ interface IKSysUserService {
      * @return 结果
      */
     fun registerUserByWxUnionId(wxUnionId: String, deptId: Long?): Boolean
+    /**
+     * 绑定微信
+     */
+    fun bindWxUnionIdByUserId(userId: Long,wxUnionId: String): Int
+    /**
+     * 解绑微信
+     */
+    fun unBindWxUnionIdByUserId(userId: Long): Int
 }
