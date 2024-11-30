@@ -136,6 +136,7 @@ open class InnerSysUserController : BaseController() {
         originUser.avatar = targetUser.avatar ?: originUser.avatar
         originUser.sex = targetUser.sex ?: originUser.sex
         originUser.updateBy = originUser.userName
+        originUser.sysUserAccount = loginUser.sysUser.sysUserAccount
         userService.updateUser(originUser)
         // 更新缓存用户信息
         tokenService.setLoginUser(loginUser)

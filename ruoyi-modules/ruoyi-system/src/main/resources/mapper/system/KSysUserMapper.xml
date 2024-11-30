@@ -23,11 +23,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="updateBy"     column="update_by"    />
         <result property="updateTime"   column="update_time"  />
         <result property="remark"       column="remark"       />
-        <association property="sysUserAccount"  javaType="KSysUserAccount"  resultMap="sysUserAccountResult" />
+        <association property="SysUserAccount"  javaType="KSysUserAccount"  resultMap="KSysUserAccount" />
         <association property="dept"    javaType="SysDept"         resultMap="deptResult" />
         <collection  property="roles"   javaType="java.util.List"  resultMap="RoleResult" />
     </resultMap>
-	<resultMap id="sysUserAccountResult" type="KSysUserAccount">
+	<resultMap id="KSysUserAccount" type="KSysUserAccount">
         <id     property="userId"    column="user_id"     />
         <result property="wxUnionId"  column="wx_unionid"   />
     </resultMap>
@@ -61,6 +61,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		    left join sys_user_role ur on u.user_id = ur.user_id
 		    left join sys_role r on r.role_id = ur.role_id
     </sql>
+    
+    <select id="selectUserById" parameterType="Long" resultMap="KSysUserAccount">
+        select ua.user_id, ua.wx_unionid from sys_user_account ua where ua.user_id = #{userId} limit 1
+    </select>
 
 	<select id="selectUserByWxUnionId" parameterType="String" resultMap="SysUserResult">
 	    <include refid="selectUserVo"/>

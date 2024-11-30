@@ -20,6 +20,7 @@ open class KSysUserServiceImpl : IKSysUserService {
     @Autowired
     lateinit var kSysUserMapper: KSysUserMapper
     override fun getISysUserService() = sysUserService
+    override fun selectUserById(userId: Long) = kSysUserMapper.selectUserById(userId)
     override fun selectUserByWxUnionId(wxUnionId: String) = kSysUserMapper.selectUserByWxUnionId(wxUnionId)
     override fun checkWxUnionIdUnique(wxUnionId: String) =
         kSysUserMapper.checkWxUnionIdUnique(wxUnionId)?.run { UserConstants.NOT_UNIQUE } ?: UserConstants.UNIQUE
@@ -49,7 +50,7 @@ open class KSysUserServiceImpl : IKSysUserService {
     }
 
     override fun bindWxUnionIdByUserId(userId: Long, wxUnionId: String): Int {
-        if (sysUserService.selectUserById(userId).sysUserAccount != null)
+        if (this.selectUserById(userId) != null)
             return kSysUserMapper.updateSysUserAccount(
                 mapOf(
                     "userId" to userId,

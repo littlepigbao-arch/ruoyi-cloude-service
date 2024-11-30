@@ -1,9 +1,18 @@
 package com.ruoyi.system.service
 
+import com.ruoyi.system.api.domain.KSysUserAccount
 import com.ruoyi.system.api.domain.SysUser
 
 interface IKSysUserService {
     fun getISysUserService(): ISysUserService
+
+    /**
+     * 通过id查询用户
+     *
+     * @param userId
+     * @return 用户对象信息
+     */
+    fun selectUserById(userId: Long): KSysUserAccount?
 
     /**
      * 通过微信unionid查询用户

@@ -1,5 +1,6 @@
 package com.ruoyi.system.mapper
 
+import com.ruoyi.system.api.domain.KSysUserAccount
 import com.ruoyi.system.api.domain.SysUser
 
 /**
@@ -8,6 +9,13 @@ import com.ruoyi.system.api.domain.SysUser
  * @author hsdllcw
  */
 interface KSysUserMapper {
+    /**
+     * 通过id查询用户
+     *
+     * @param userId
+     * @return 用户对象信息
+     */
+    fun selectUserById(userId: Long): KSysUserAccount?
     /**
      * 通过用户名查询用户
      *
