@@ -3,6 +3,7 @@ package com.ruoyi.system.controller.inner
 import com.github.pagehelper.Page
 import com.ruoyi.common.core.domain.R
 import com.ruoyi.common.core.utils.StringUtils
+import com.ruoyi.common.core.utils.ip.IpUtils
 import com.ruoyi.common.core.web.controller.BaseController
 import com.ruoyi.common.core.web.domain.AjaxResult
 import com.ruoyi.common.log.annotation.Log
@@ -107,6 +108,8 @@ open class InnerSysUserController : BaseController() {
         // 权限集合
         val permissions: Set<String> = permissionService.getMenuPermission(sysUser)
         val sysUserVo = LoginUser()
+        sysUserVo.userid = sysUser?.userId
+        sysUserVo.ipaddr = IpUtils.getIpAddr()
         sysUserVo.sysUser = sysUser
         sysUserVo.roles = roles
         sysUserVo.permissions = permissions
@@ -120,7 +123,6 @@ open class InnerSysUserController : BaseController() {
     @PutMapping
     @Log(title = "用户修改本人信息", businessType = BusinessType.UPDATE)
     fun edit(@Validated @RequestBody loginUser: LoginUser): AjaxResult {
-        val originUser = userService.selectUserById(loginUser.userid)
         val targetUser = loginUser.sysUser
         if (!userService.checkUserNameUnique(targetUser)) {
             return error("修改用户'" + targetUser.userName + "'失败，登录账号已存在")
@@ -129,6 +131,7 @@ open class InnerSysUserController : BaseController() {
         } else if (StringUtils.isNotEmpty(targetUser.email) && !userService.checkEmailUnique(targetUser)) {
             return error("修改用户'" + targetUser.userName + "'失败，邮箱账号已存在")
         }
+        val originUser = userService.selectUserById(targetUser.userId)
         originUser.userName = targetUser.userName ?: originUser.userName
         originUser.nickName = targetUser.nickName ?: originUser.nickName
         originUser.phonenumber = targetUser.phonenumber ?: originUser.phonenumber
