@@ -40,6 +40,7 @@
         <logback.version>1.2.13</logback.version>
         <spring-framework.version>5.3.39</spring-framework.version>
         <kotlin.version>2.0.0</kotlin.version>
+        <spring-boot-admin>2.7.15-SNAPSHOT</spring-boot-admin>
     </properties>
 
     <!-- 依赖声明 -->
@@ -253,7 +254,11 @@
                 <artifactId>ruoyi-api-system</artifactId>
                 <version>${ruoyi.version}</version>
             </dependency>
-
+            <dependency>
+                <groupId>de.codecentric</groupId>
+                <artifactId>spring-boot-admin-starter-client</artifactId>
+                <version>${spring-boot-admin}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
