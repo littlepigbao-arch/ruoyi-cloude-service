@@ -26,3 +26,8 @@ spring:
         namespace: 78a7f41e-46cc-437a-9716-735888227693
         username: nacos
         password: u0uM2RIp3Xle9VVFWtpzoz9ZdNbwG6PpWsjrOVphXzlDc0jA
+logging:
+  file:
+    name: dev-ruoyi-auth.log
+  pattern:
+    file: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID}){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"
