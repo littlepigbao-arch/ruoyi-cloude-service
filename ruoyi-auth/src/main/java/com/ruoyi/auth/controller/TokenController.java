@@ -1,6 +1,8 @@
 package com.ruoyi.auth.controller;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -82,7 +84,8 @@ public class TokenController
      * @return ResponseEntity: 返回一个空的响应体，表示令牌验证通过
      */
     @RequestMapping("verify")
-    public ResponseEntity<?> verifyToken() {
+    public ResponseEntity<?> verifyToken(HttpServletResponse response) {
+        response.setHeader("X-User-ID", String.valueOf(SecurityUtils.getUserId()));
         // 返回一个HTTP 200 OK响应，表示令牌有效
         return ResponseEntity.ok().build();
     }
