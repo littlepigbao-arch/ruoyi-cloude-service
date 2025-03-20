@@ -51,7 +51,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		<id     property="userId"    column="user_id"     />
 		<result property="wxUnionId"  column="wx_unionid"   />
 	</resultMap>
-	
+
 	<sql id="selectUserVo">
         select u.user_id, u.dept_id, u.user_name, u.nick_name, u.email, u.avatar, u.phonenumber, u.password, u.sex, u.status, u.del_flag, u.login_ip, u.login_date, u.create_by, u.create_time, u.remark,
         d.dept_id, d.parent_id, d.ancestors, d.dept_name, d.order_num, d.leader, d.status as dept_status,
@@ -195,7 +195,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
  		update sys_user
  		<set>
  			<if test="deptId != null and deptId != 0">dept_id = #{deptId},</if>
- 			<if test="userName != null and userName != ''">user_name = #{userName},</if>
  			<if test="nickName != null and nickName != ''">nick_name = #{nickName},</if>
  			<if test="email != null ">email = #{email},</if>
  			<if test="phonenumber != null ">phonenumber = #{phonenumber},</if>
