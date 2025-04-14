@@ -16,7 +16,7 @@ open class RemoteSysNoticeFallbackFactory : FallbackFactory<RemoteSysNoticeServi
     override fun create(throwable: Throwable): RemoteSysNoticeService {
         log.error("公告服务调用失败:{}", throwable.message)
         return object : RemoteSysNoticeService {
-            override fun getById_Inner(noticeId: Long?, source: String?): R<Any> {
+            override fun getById_Inner(noticeId: Long, source: String): R<Any> {
                 return R.fail("获取公告失败")
             }
         }

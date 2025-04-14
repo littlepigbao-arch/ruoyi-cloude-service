@@ -12,10 +12,9 @@ interface InnerRemoteSysNoticeService {
      * @param noticeId 公告ID
      * @return 公告信息
      */
-    @GetMapping("/inner/notice/detail/{noticeId}")
+    @GetMapping("/inner/notice/detail/{noticeId:\\d+}")
     fun getById_Inner(
-        @PathVariable("noticeId") noticeId: Long?, @RequestHeader(
-            SecurityConstants.FROM_SOURCE
-        ) source: String?
-    ): R<Any>?
+        @PathVariable("noticeId") noticeId: Long,
+        @RequestHeader(SecurityConstants.FROM_SOURCE) source: String
+    ): R<Any>
 }

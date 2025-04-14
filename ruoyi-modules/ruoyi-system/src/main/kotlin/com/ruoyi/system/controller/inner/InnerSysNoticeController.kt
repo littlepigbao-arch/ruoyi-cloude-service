@@ -24,8 +24,8 @@ open class InnerSysNoticeController : BaseController() {
      * 根据ID获取公告信息
      */
     @InnerAuth
-    @GetMapping("/detail/{noticeId}")
-    fun infoById(@PathVariable("noticeId") noticeId: Long): R<SysNotice> {
+    @GetMapping("/detail/{noticeId:\\d+}")
+    fun infoById(@PathVariable("noticeId") noticeId: Long): R<Any> {
         return R.ok(noticeService.selectNoticeById(noticeId))
     }
 }
