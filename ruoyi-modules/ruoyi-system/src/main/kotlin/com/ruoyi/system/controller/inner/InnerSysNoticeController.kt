@@ -3,12 +3,11 @@ package com.ruoyi.system.controller.inner
 import com.ruoyi.common.core.domain.R
 import com.ruoyi.common.core.web.controller.BaseController
 import com.ruoyi.common.security.annotation.InnerAuth
-import com.ruoyi.system.domain.SysNotice
 import com.ruoyi.system.service.ISysNoticeService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -24,8 +23,8 @@ open class InnerSysNoticeController : BaseController() {
      * 根据ID获取公告信息
      */
     @InnerAuth
-    @GetMapping("/detail/{noticeId:\\d+}")
-    fun infoById(@PathVariable("noticeId") noticeId: Long): R<Any> {
+    @GetMapping("/detail")
+    fun infoById(@RequestParam("noticeId") noticeId: Long): R<Any> {
         return R.ok(noticeService.selectNoticeById(noticeId))
     }
 }
