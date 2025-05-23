@@ -101,7 +101,7 @@ open class InnerSysUserController : BaseController() {
     fun infoByWxUnionId(@PathVariable("unionid") unionid: String): R<LoginUser> {
         val sysUser = kSysUserService.selectUserByWxUnionId(unionid)
         if (StringUtils.isNull(sysUser)) {
-            return R.fail("wx_unionid错误")
+            return R.fail("unionid错误")
         }
         // 角色集合
         val roles: Set<String> = permissionService.getRolePermission(sysUser)
