@@ -10,6 +10,7 @@ import com.ruoyi.common.log.annotation.Log
 import com.ruoyi.common.log.enums.BusinessType
 import com.ruoyi.common.security.annotation.InnerAuth
 import com.ruoyi.common.security.service.TokenService
+import com.ruoyi.system.api.domain.KSysUserAccount
 import com.ruoyi.system.api.domain.SysUser
 import com.ruoyi.system.api.model.LoginUser
 import com.ruoyi.system.service.IKSysUserService
@@ -150,17 +151,15 @@ open class InnerSysUserController : BaseController() {
      * 注册用户信息
      */
     @InnerAuth
-    @PostMapping("/register/wx/unionid")
-    fun registerUserByWxUnionId(@RequestBody params: Map<String, String?>): R<Boolean> {
-        if (!("true" == configService.selectConfigByKey("sys.account.registerUser"))) {
+    @PostMapping("/register/dept/{deptId}/wx/unionid")
+    fun registerUserBySysUserAccount(@RequestBody sysUserAccount: KSysUserAccount, @PathVariable deptId: Long): R<Boolean> {
+        if ("true" != configService.selectConfigByKey("sys.account.registerUser")) {
             return R.fail("当前系统没有开启注册功能！")
         }
-        val unionid = params.get("unionId")
-        val deptId = params.get("deptId")?.toLong()
-        if (unionid == null) return R.fail("微信unionid不存在无法注册")
-        if (!kSysUserService.checkWxUnionIdUnique(unionid)) {
-            return R.fail("保存用户'$unionid'失败，注册账号已存在")
+        if (sysUserAccount.wxUnionId == null) return R.fail("微信unionid不存在无法注册")
+        if (!kSysUserService.checkWxUnionIdUnique(sysUserAccount.wxUnionId!!)) {
+            return R.fail("保存用户'$sysUserAccount.wxUnionId'失败，注册账号已存在")
         }
-        return R.ok(kSysUserService.registerUserByWxUnionId(unionid, deptId))
+        return R.ok(kSysUserService.registerUserBySysUserAccount(sysUserAccount, deptId))
     }
 }

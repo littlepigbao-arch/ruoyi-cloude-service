@@ -1,6 +1,7 @@
 package com.ruoyi.system.api.factory;
 
 import com.github.pagehelper.Page;
+import com.ruoyi.system.api.domain.KSysUserAccount;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,8 +11,6 @@ import com.ruoyi.common.core.domain.R;
 import com.ruoyi.system.api.RemoteUserService;
 import com.ruoyi.system.api.domain.SysUser;
 import com.ruoyi.system.api.model.LoginUser;
-
-import java.util.Map;
 
 /**
  * 用户服务降级处理
@@ -76,7 +75,7 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
             }
 
             @Override
-            public R<Boolean> registerUserByWxUnionId_Inner(Map<String, String> params, String source) {
+            public R<Boolean> registerUserBySysUserAccount_Inner(KSysUserAccount sysUserAccount, Long deptId, String source) {
                 return R.fail("注册用户失败:" + throwable.getMessage());
             }
         };

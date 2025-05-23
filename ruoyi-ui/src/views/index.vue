@@ -108,7 +108,7 @@
             <span>更新日志</span>
           </div>
           <el-collapse accordion>
-            <el-collapse-item title="v3.6.5.0.6 - 2024-11-13">
+            <el-collapse-item title="v3.6.5.0.7 - 2024-11-13">
               <ol>
                 <li>使用SpringDoc代替Swagger</li>
                 <li>菜单管理新增路由名称</li>
@@ -909,7 +909,7 @@ export default {
   data() {
     return {
       // 版本号
-      version: "3.6.5.0.6",
+      version: "3.6.5.0.7",
     };
   },
   methods: {

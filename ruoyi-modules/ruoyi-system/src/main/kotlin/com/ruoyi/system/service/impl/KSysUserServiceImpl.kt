@@ -3,6 +3,7 @@ package com.ruoyi.system.service.impl
 import com.ruoyi.common.core.constant.UserConstants
 import com.ruoyi.common.core.utils.uuid.IdUtils
 import com.ruoyi.common.security.utils.SecurityUtils
+import com.ruoyi.system.api.domain.KSysUserAccount
 import com.ruoyi.system.api.domain.SysUser
 import com.ruoyi.system.mapper.KSysUserMapper
 import com.ruoyi.system.service.IKSysUserService
@@ -28,10 +29,11 @@ open class KSysUserServiceImpl : IKSysUserService {
     /**
      * 注册用户信息
      *
-     * @param wxUnionId 微信unionId
+     * @param sysUserAccount 包含微信unionId
+     * @param deptId 部门ID
      * @return 结果
      */
-    override fun registerUserByWxUnionId(wxUnionId: String, deptId: Long?): Boolean {
+    override fun registerUserBySysUserAccount(sysUserAccount: KSysUserAccount, deptId: Long): Boolean {
         val user = SysUser().apply {
             userName = IdUtils.randomUUID().replace("-".toRegex(), "").substring(0, 30)
             nickName = "嘉迪微信用户"
@@ -40,34 +42,16 @@ open class KSysUserServiceImpl : IKSysUserService {
         }
         return sysUserService.registerUser(user).apply {
             sysUserService.selectUserByUserName(user.userName)
-            kSysUserMapper.insertSysUserAccount(
-                mapOf(
-                    "userId" to user.userId,
-                    "wxUnionId" to wxUnionId,
-                )
-            )
+            kSysUserMapper.insertSysUserAccount(sysUserAccount)
         }
     }
 
-    override fun bindWxUnionIdByUserId(userId: Long, wxUnionId: String): Int {
-        if (this.selectUserById(userId) != null)
-            return kSysUserMapper.updateSysUserAccount(
-                mapOf(
-                    "userId" to userId,
-                    "wxUnionId" to wxUnionId,
-                )
-            )
-        else
-            return kSysUserMapper.insertSysUserAccount(
-                mapOf(
-                    "userId" to userId,
-                    "wxUnionId" to wxUnionId,
-                )
-            )
+    override fun updateSysUserAccount(sysUserAccount: KSysUserAccount): Int {
+        return kSysUserMapper.updateSysUserAccount(sysUserAccount)
     }
 
     override fun unBindWxUnionIdByUserId(userId: Long): Int {
-        return kSysUserMapper.updateSysUserAccount(
+        return kSysUserMapper.unBindWxUnionIdByUserId(
             mapOf(
                 "userId" to userId,
                 "wxUnionId" to null,

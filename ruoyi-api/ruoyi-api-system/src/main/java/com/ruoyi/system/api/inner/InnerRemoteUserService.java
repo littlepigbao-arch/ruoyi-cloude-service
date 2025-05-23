@@ -3,6 +3,7 @@ package com.ruoyi.system.api.inner;
 import com.github.pagehelper.Page;
 import com.ruoyi.common.core.constant.SecurityConstants;
 import com.ruoyi.common.core.domain.R;
+import com.ruoyi.system.api.domain.KSysUserAccount;
 import com.ruoyi.system.api.domain.SysUser;
 import com.ruoyi.system.api.model.LoginUser;
 import org.springframework.web.bind.annotation.*;
@@ -18,17 +19,17 @@ public interface InnerRemoteUserService {
      * @return 结果
      */
     @GetMapping("/inner/user/detail/{userId}")
-    R<LoginUser>  getById_Inner(@PathVariable("userId") Long userId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    R<LoginUser> getById_Inner(@PathVariable("userId") Long userId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
 
     /**
      * 通过用户ID查询用户信息
      *
      * @param unionid 用户微信unionid
-     * @param source 请求来源
+     * @param source  请求来源
      * @return 结果
      */
     @GetMapping("/inner/user/detail/wx/unionid/{unionid}")
-    R<LoginUser>  getByWxUnionId_Inner(@PathVariable("unionid") String unionid, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    R<LoginUser> getByWxUnionId_Inner(@PathVariable("unionid") String unionid, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
 
     /**
      * 通过手机号查询用户信息
@@ -56,10 +57,11 @@ public interface InnerRemoteUserService {
     /**
      * 注册用户信息
      *
-     * @param params 包含微信unionId和deptId
+     * @param sysUserAccount 包含微信unionId
+     * @param deptId 包含部门ID
      * @param source 请求来源
      * @return 结果
      */
-    @PostMapping("/inner/user/register/wx/unionid")
-    public R<Boolean> registerUserByWxUnionId_Inner(@RequestBody Map<String, String> params, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    @PostMapping("/inner/user/register/dept/{deptId}/wx/unionid")
+    public R<Boolean> registerUserBySysUserAccount_Inner(@RequestBody KSysUserAccount sysUserAccount,@PathVariable Long deptId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
 }

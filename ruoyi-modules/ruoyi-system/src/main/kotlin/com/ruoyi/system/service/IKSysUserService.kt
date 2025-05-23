@@ -33,14 +33,14 @@ interface IKSysUserService {
     /**
      * 注册用户信息
      *
-     * @param wxUnionId 微信unionId
+     * @param sysUserAccount 包含微信unionId
      * @return 结果
      */
-    fun registerUserByWxUnionId(wxUnionId: String, deptId: Long?): Boolean
+    fun registerUserBySysUserAccount(sysUserAccount: KSysUserAccount, deptId: Long): Boolean
     /**
      * 绑定微信
      */
-    fun bindWxUnionIdByUserId(userId: Long,wxUnionId: String): Int
+    fun updateSysUserAccount(sysUserAccount: KSysUserAccount): Int
     /**
      * 解绑微信
      */

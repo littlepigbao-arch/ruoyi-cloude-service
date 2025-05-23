@@ -1,9 +1,21 @@
 package com.ruoyi.system.api.domain
 
-class KSysUserAccount {
+import com.cyl.manager.ums.domain.entity.MemberWechat
+
+open class KSysUserAccount : MemberWechat() {
     /** 用户ID */
-    var userId: Long? = null
+    open var userId: Long? = null
+        set(value) {
+            memberId = value
+            field = value
+        }
+        get() = memberId
 
     /** 微信UnionId */
-    var wxUnionId: String? = null
+    open var wxUnionId: String? = null
+        set(value) {
+            unionid = value
+            field = value
+        }
+        get() = unionid
 }
