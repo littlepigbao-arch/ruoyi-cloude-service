@@ -63,5 +63,5 @@ public interface InnerRemoteUserService {
      * @return 结果
      */
     @PostMapping("/inner/user/register/dept/{deptId}/wx/unionid")
-    public R<Boolean> registerUserBySysUserAccount_Inner(@RequestBody KSysUserAccount sysUserAccount,@PathVariable Long deptId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    public R<Boolean> registerUserBySysUserAccount_Inner(@RequestBody KSysUserAccount sysUserAccount,@PathVariable("deptId") Long deptId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
 }
