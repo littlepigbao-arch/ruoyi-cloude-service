@@ -178,6 +178,9 @@ Router.prototype.replace = function push(location) {
 
 export default new Router({
   mode: 'history', // 去掉url中的#
+  // 默认情况下，Vue CLI 会假设你的应用是被部署在一个域名的根路径上
+  // 例如 https://www.ruoyi.vip/。如果应用被部署在一个子路径上，你就需要用这个选项指定这个子路径。例如，如果你的应用被部署在 https://www.ruoyi.vip/admin/，则设置 baseUrl 为 /admin/。
+  base: process.env.NODE_ENV === "production" ? "/" : "/",
   scrollBehavior: () => ({ y: 0 }),
   routes: constantRoutes
 })

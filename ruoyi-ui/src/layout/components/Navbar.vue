@@ -102,7 +102,9 @@ export default {
         type: 'warning'
       }).then(() => {
         this.$store.dispatch('LogOut').then(() => {
-          location.href = '/index'
+          // 使用 BASE_PATH 拼接路径
+          const basePath = process.env.VUE_APP_BASE_PATH || '/';  // 优先从环境变量读取
+          location.href = `${basePath}index`;
         })
       }).catch(() => {})
     }
