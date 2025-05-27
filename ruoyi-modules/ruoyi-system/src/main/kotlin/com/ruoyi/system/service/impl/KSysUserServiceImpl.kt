@@ -41,7 +41,7 @@ open class KSysUserServiceImpl : IKSysUserService {
             this.deptId = deptId
         }
         return sysUserService.registerUser(user).apply {
-            sysUserService.selectUserByUserName(user.userName)
+            sysUserAccount.memberId = sysUserService.selectUserByUserName(user.userName).userId
             kSysUserMapper.insertSysUserAccount(sysUserAccount)
         }
     }
