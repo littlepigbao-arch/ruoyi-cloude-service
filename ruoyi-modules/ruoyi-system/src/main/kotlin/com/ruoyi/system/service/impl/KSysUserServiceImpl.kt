@@ -50,12 +50,7 @@ open class KSysUserServiceImpl : IKSysUserService {
         return kSysUserMapper.updateSysUserAccount(sysUserAccount)
     }
 
-    override fun unBindWxUnionIdByUserId(userId: Long): Int {
-        return kSysUserMapper.unBindWxUnionIdByUserId(
-            mapOf(
-                "userId" to userId,
-                "wxUnionId" to null,
-            )
-        )
+    override fun unBindWxByUserId(userId: Long): Int {
+        return kSysUserMapper.unBindWxByUserId(userId)
     }
 }

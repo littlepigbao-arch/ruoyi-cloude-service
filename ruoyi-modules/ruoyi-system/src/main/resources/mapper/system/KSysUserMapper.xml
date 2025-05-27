@@ -130,23 +130,28 @@
     </insert>
     <update id="updateSysUserAccount">
         update ums_member_wechat
-        set unionid         = #{wxUnionId},
-            openid          = #{openid},
-            routine_openid  = #{routineOpenid},
-            groupid         = #{groupid},
-            tagid_list      = #{tagidList},
-            subscribe       = #{subscribe},
-            subscribe_time  = #{subscribeTime},
-            session_key     = #{sessionKey},
-            access_token    = #{accessToken},
-            expires_in      = #{expiresIn},
-            refresh_token  = #{refreshToken},
-            expire_time    = #{expireTime}
+        <set>
+            <if test="unionid != null and unionid != ''">unionid = #{unionid},</if>
+            <if test="openid != null and openid != ''">openid = #{openid},</if>
+            <if test="routineOpenid != null and routineOpenid != ''">routine_openid = #{routineOpenid},</if>
+            <if test="groupid != null and groupid != ''">groupid = #{groupid},</if>
+            <if test="tagidList != null and tagidList != ''">tagid_list = #{tagidList},</if>
+            <if test="subscribe != null and subscribe != ''">subscribe = #{subscribe},</if>
+            <if test="subscribeTime != null and subscribeTime != ''">subscribe_time = #{subscribeTime},</if>
+            <if test="sessionKey != null and sessionKey != ''">session_key = #{sessionKey},</if>
+            <if test="accessToken != null and accessToken != ''">access_token = #{accessToken},</if>
+            <if test="expiresIn != null and expiresIn != ''">expires_in = #{expiresIn},</if>
+            <if test="refreshToken != null and refreshToken != ''">refresh_token = #{refreshToken},</if>
+            <if test="expireTime != null and expireTime != ''">expire_time = #{expireTime},</if>
+            update_time = sysdate()
+        </set>
         where member_id = #{userId}
     </update>
-    <insert id="unBindWxUnionIdByUserId">
+    <insert id="unBindWxByUserId">
         update ums_member_wechat
-        set unionid = #{wxUnionId}
+        set unionid        = null,
+            openid         = null,
+            routine_openid = null
         where member_id = #{userId}
     </insert>
 </mapper> 

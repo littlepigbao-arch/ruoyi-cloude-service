@@ -2,6 +2,7 @@ package com.ruoyi.system.mapper
 
 import com.ruoyi.system.api.domain.KSysUserAccount
 import com.ruoyi.system.api.domain.SysUser
+import org.apache.ibatis.annotations.Param
 
 /**
  * 用户表 数据层
@@ -16,6 +17,7 @@ interface KSysUserMapper {
      * @return 用户对象信息
      */
     fun selectUserById(userId: Long): KSysUserAccount?
+
     /**
      * 通过用户名查询用户
      *
@@ -36,5 +38,5 @@ interface KSysUserMapper {
 
     fun updateSysUserAccount(sysUserAccount: KSysUserAccount): Int
 
-    fun unBindWxUnionIdByUserId(params: Map<String, Any?>): Int
+    fun unBindWxByUserId(@Param("userId") userId: Long): Int
 }

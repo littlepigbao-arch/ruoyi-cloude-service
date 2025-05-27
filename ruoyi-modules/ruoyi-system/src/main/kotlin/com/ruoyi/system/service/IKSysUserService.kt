@@ -44,5 +44,5 @@ interface IKSysUserService {
     /**
      * 解绑微信
      */
-    fun unBindWxUnionIdByUserId(userId: Long): Int
+    fun unBindWxByUserId(userId: Long): Int
 }

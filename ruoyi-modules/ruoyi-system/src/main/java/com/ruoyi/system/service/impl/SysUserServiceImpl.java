@@ -331,10 +331,8 @@ public class SysUserServiceImpl implements ISysUserService
         insertUserPost(user);
         // 重绑定微信信息
         if (Objects.nonNull(user.getSysUserAccount())) {
-            KSysUserAccount sysUserAccount = new KSysUserAccount();
-            sysUserAccount.setUserId(userId);
-            kSysUserService.updateSysUserAccount(sysUserAccount);
             if (Objects.nonNull(user.getSysUserAccount().getWxUnionId())) {
+                kSysUserService.unBindWxByUserId(userId);
                 kSysUserService.updateSysUserAccount(user.getSysUserAccount());
             }
         }
