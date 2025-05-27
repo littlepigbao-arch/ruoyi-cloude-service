@@ -78,6 +78,11 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
             public R<Boolean> registerUserBySysUserAccount_Inner(KSysUserAccount sysUserAccount, Long deptId, String source) {
                 return R.fail("注册用户失败:" + throwable.getMessage());
             }
+
+            @Override
+            public R<Boolean> unbindWeixin_Inner(Long userId, String source) {
+                return R.fail("解绑微信失败:" + throwable.getMessage());
+            }
         };
     }
 }

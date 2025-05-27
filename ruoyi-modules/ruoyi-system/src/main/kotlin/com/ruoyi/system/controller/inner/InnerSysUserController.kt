@@ -10,6 +10,7 @@ import com.ruoyi.common.log.annotation.Log
 import com.ruoyi.common.log.enums.BusinessType
 import com.ruoyi.common.security.annotation.InnerAuth
 import com.ruoyi.common.security.service.TokenService
+import com.ruoyi.common.security.utils.SecurityUtils
 import com.ruoyi.system.api.domain.KSysUserAccount
 import com.ruoyi.system.api.domain.SysUser
 import com.ruoyi.system.api.model.LoginUser
@@ -81,7 +82,7 @@ open class InnerSysUserController : BaseController() {
      */
     @InnerAuth
     @GetMapping("/detail/{userId}")
-    fun infoById(@PathVariable("userId") userId: Long?): R<LoginUser> {
+    fun infoById(@PathVariable("userId") userId: Long): R<LoginUser> {
         val sysUser: SysUser = userService.selectUserById(userId)
         // 角色集合
         val roles: Set<String> = permissionService.getRolePermission(sysUser)
@@ -161,5 +162,15 @@ open class InnerSysUserController : BaseController() {
             return R.fail("保存用户'$sysUserAccount.wxUnionId'失败，注册账号已存在")
         }
         return R.ok(kSysUserService.registerUserBySysUserAccount(sysUserAccount, deptId))
+    }
+    @InnerAuth
+    @PutMapping("/{userId}/unbind/weixin")
+    @Log(title = "解绑微信", businessType = BusinessType.UPDATE)
+    fun unbindWeChat(@PathVariable("userId") userId: Long): AjaxResult {
+        val loginUser = SecurityUtils.getLoginUser()
+        kSysUserService.unBindWxByUserId(userId)
+        // 更新缓存用户信息
+        tokenService.loginUser = loginUser
+        return success(loginUser)
     }
 }

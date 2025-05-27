@@ -63,5 +63,15 @@ public interface InnerRemoteUserService {
      * @return 结果
      */
     @PostMapping("/inner/user/register/dept/{deptId}/wx/unionid")
-    public R<Boolean> registerUserBySysUserAccount_Inner(@RequestBody KSysUserAccount sysUserAccount,@PathVariable("deptId") Long deptId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+    R<Boolean> registerUserBySysUserAccount_Inner(@RequestBody KSysUserAccount sysUserAccount, @PathVariable("deptId") Long deptId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+
+    /**
+     * 解绑微信
+     *
+     * @param userId 用户ID
+     * @param source 请求来源
+     * @return 结果
+     */
+    @PutMapping("/inner/user/{userId}/unbind/weixin")
+    R<Boolean> unbindWeixin_Inner(@PathVariable("userId") Long userId, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
 }

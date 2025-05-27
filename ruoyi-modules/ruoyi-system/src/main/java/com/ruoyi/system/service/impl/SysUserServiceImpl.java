@@ -329,10 +329,9 @@ public class SysUserServiceImpl implements ISysUserService
         userPostMapper.deleteUserPostByUserId(userId);
         // 新增用户与岗位管理
         insertUserPost(user);
-        // 重绑定微信信息
+        // 更新微信信息
         if (Objects.nonNull(user.getSysUserAccount())) {
             if (Objects.nonNull(user.getSysUserAccount().getWxUnionId())) {
-                kSysUserService.unBindWxByUserId(userId);
                 kSysUserService.updateSysUserAccount(user.getSysUserAccount());
             }
         }
