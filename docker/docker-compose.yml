@@ -7,10 +7,16 @@ services:
       context: ./nacos
     environment:
       - MODE=standalone
+      # Nacos 2.2+ 需要设置以下启动参数
+      - NACOS_AUTH_TOKEN=U2VjcmV0S2V5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5
+      - NACOS_AUTH_IDENTITY_KEY=serverIdentity
+      - NACOS_AUTH_IDENTITY_VALUE=security
     volumes:
       - ./nacos/logs/:/home/nacos/logs
       - ./nacos/conf/application.properties:/home/nacos/conf/application.properties
     ports:
+      # Nacos  2.0+ 默认管理端口
+      - "8864:8080"
       - "8848:8848"
       - "9848:9848"
       - "9849:9849"
