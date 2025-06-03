@@ -8,6 +8,12 @@ usage() {
 
 # 开启所需端口
 port(){
+    # 检测端口是否被占用。
+    for port in 80 8080 8848 9848 9849 6379 3306 9100 9200 9201 9202 9203 9300; do
+      echo "检查端口 $port:"
+      lsof -Pi :$port -sTCP:LISTEN -t >/dev/null && echo "已被占用" || echo "未被占用"
+    done
+
 	firewall-cmd --add-port=80/tcp --permanent
 	firewall-cmd --add-port=8080/tcp --permanent
 	firewall-cmd --add-port=8848/tcp --permanent
@@ -42,6 +48,11 @@ stop(){
 # 删除所有环境/模块
 rm(){
 	docker-compose rm
+    # 查询已启动的容器使用的镜像文件
+    docker ps -a --filter "name=ruoyi" --format "{{.Names}}\t{{.Image}}"
+    # 删除容器使用的镜像
+    docker rmi -f $(docker ps -a --filter "name=ruoyi" --format "{{.Image}}")
+
 }
 
 # 根据输入参数，选择执行对应方法，不输入则执行使用说明
