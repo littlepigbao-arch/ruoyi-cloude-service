@@ -1,19 +1,18 @@
 # Tomcat
-server:
-  port: 9300
+server: 
+  port: 9200
 
-# Spring
+#测试环境
 spring:
   application:
     # 应用名称
-    name: ruoyi-file
+    name: ruoyi-auth
   cloud:
     nacos:
       discovery:
-        ip: 8.155.60.167
         # 服务注册地址
         server-addr: nacos.zkjiadi.cc
-        namespace: e2708b29-ca15-4f63-a919-d33932ebdfda
+        namespace: 78a7f41e-46cc-437a-9716-735888227693
         username: nacos
         password: u0uM2RIp3Xle9VVFWtpzoz9ZdNbwG6PpWsjrOVphXzlDc0jA
       config:
@@ -24,6 +23,11 @@ spring:
         # 共享配置
         shared-configs:
           - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
-        namespace: e2708b29-ca15-4f63-a919-d33932ebdfda
+        namespace: 78a7f41e-46cc-437a-9716-735888227693
         username: nacos
         password: u0uM2RIp3Xle9VVFWtpzoz9ZdNbwG6PpWsjrOVphXzlDc0jA
+logging:
+  file:
+    name: prod-ruoyi-auth.log
+  pattern:
+    file: "%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID}){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"
