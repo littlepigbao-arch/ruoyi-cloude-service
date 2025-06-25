@@ -41,7 +41,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 			</if>
 		</where>
     </select>
-    
+    <select id="selectNoticeByNoticeTitle" parameterType="String" resultMap="SysNoticeResult">
+        <include refid="selectNoticeVo"/>
+        where notice_title = #{noticeTitle}
+        order by notice_id desc
+        limit 1
+    </select>
+
     <insert id="insertNotice" parameterType="SysNotice">
         insert into sys_notice (
 			<if test="noticeTitle != null and noticeTitle != '' ">notice_title, </if>

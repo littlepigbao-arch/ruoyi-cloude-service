@@ -57,4 +57,12 @@ public interface ISysNoticeService
      * @return 结果
      */
     public int deleteNoticeByIds(Long[] noticeIds);
+
+    /**
+     * 查询公告信息
+     *
+     * @param noticeTitle 公告标题
+     * @return 公告信息
+     */
+    public SysNotice selectNoticeByNoticeTitle(String noticeTitle);
 }
