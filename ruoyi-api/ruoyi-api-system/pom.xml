@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.ruoyi</groupId>
         <artifactId>ruoyi-api</artifactId>
-        <version>3.6.5.0.8</version>
+        <version>3.6.5.0.9</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
     
@@ -25,7 +25,7 @@
         <dependency>
             <groupId>com.zkjiadi</groupId>
             <artifactId>zkjiadi-mall-api</artifactId>
-            <version>1.0.6</version>
+            <version>1.0.7</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.squareup.okhttp3</groupId>
