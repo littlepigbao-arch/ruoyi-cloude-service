@@ -84,7 +84,7 @@
         <dependency>
             <groupId>com.ujcms</groupId>
             <artifactId>ujcms-commons</artifactId>
-            <version>9.6.0.0.16</version>
+            <version>9.6.0.0.14</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.springframework</groupId>
