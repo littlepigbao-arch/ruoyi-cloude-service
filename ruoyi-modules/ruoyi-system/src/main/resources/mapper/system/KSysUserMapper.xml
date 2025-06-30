@@ -25,7 +25,7 @@
         <result property="remark" column="remark"/>
         <association property="sysUserAccount" javaType="com.ruoyi.system.api.domain.KSysUserAccount"
                      resultMap="KSysUserAccount"/>
-        <association property="dept" javaType="SysDept" resultMap="deptResult"/>
+        <association property="dept" javaType="com.ruoyi.system.api.domain.SysDept" resultMap="deptResult"/>
         <collection property="roles" javaType="java.util.List" resultMap="RoleResult"/>
     </resultMap>
     <resultMap id="KSysUserAccount" type="com.ruoyi.system.api.domain.KSysUserAccount">
@@ -44,7 +44,7 @@
         <result property="refreshToken" column="refreshToken"/>
         <result property="expireTime" column="expireTime"/>
     </resultMap>
-    <resultMap id="deptResult" type="SysDept">
+    <resultMap id="deptResult" type="com.ruoyi.system.api.domain.SysDept">
         <id property="deptId" column="dept_id"/>
         <result property="parentId" column="parent_id"/>
         <result property="deptName" column="dept_name"/>
@@ -54,7 +54,7 @@
         <result property="status" column="dept_status"/>
     </resultMap>
 
-    <resultMap id="RoleResult" type="SysRole">
+    <resultMap id="RoleResult" type="com.ruoyi.system.api.domain.SysRole">
         <id property="roleId" column="role_id"/>
         <result property="roleName" column="role_name"/>
         <result property="roleKey" column="role_key"/>
