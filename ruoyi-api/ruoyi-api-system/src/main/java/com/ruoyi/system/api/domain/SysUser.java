@@ -3,6 +3,10 @@ package com.ruoyi.system.api.domain;
 import java.util.Date;
 import java.util.List;
 import javax.validation.constraints.*;
+
+import com.ruoyi.common.core.annotation.NoSensitive;
+import com.ruoyi.common.sensitive.annotation.Sensitive;
+import com.ruoyi.common.sensitive.enums.DesensitizedType;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 import com.ruoyi.common.core.annotation.Excel;
@@ -44,6 +48,7 @@ public class SysUser extends BaseEntity
 
     /** 手机号码 */
     @Excel(name = "手机号码", cellType = ColumnType.TEXT)
+    @Sensitive(desensitizedType = DesensitizedType.PHONE)
     private String phonenumber;
 
     /** 用户性别 */

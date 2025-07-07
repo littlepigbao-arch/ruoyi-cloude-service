@@ -22,7 +22,12 @@
             <groupId>com.ruoyi</groupId>
             <artifactId>ruoyi-common-core</artifactId>
         </dependency>
-        
+
+        <!-- RuoYi Common Sensitive -->
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>ruoyi-common-sensitive</artifactId>
+        </dependency>
     </dependencies>
 
 </project>
