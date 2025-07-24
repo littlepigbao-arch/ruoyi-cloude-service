@@ -15,7 +15,7 @@ import com.ruoyi.common.core.utils.StringUtils;
  */
 public class SecurityContextHolder
 {
-    private static final TransmittableThreadLocal<Map<String, Object>> THREAD_LOCAL = new TransmittableThreadLocal<>();
+    private static final TransmittableThreadLocal<Map<String, Object>> THREAD_LOCAL = TransmittableThreadLocal.withInitial(ConcurrentHashMap::new);
 
     public static void set(String key, Object value)
     {
