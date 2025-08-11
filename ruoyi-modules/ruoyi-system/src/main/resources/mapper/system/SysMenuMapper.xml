@@ -149,7 +149,7 @@
 			<if test="visible != null">visible = #{visible},</if>
 			<if test="status != null">status = #{status},</if>
 			<if test="perms !=null">perms = #{perms},</if>
-			<if test="icon !=null and icon != ''">icon = #{icon},</if>
+			icon = #{icon},
 			<if test="remark != null and remark != ''">remark = #{remark},</if>
 			<if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
 			update_time = sysdate()
