@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.ruoyi.job.mapper.ScClassUserInfoMapper">
+    <resultMap id="scClassUserInfo" type="com.ruoyi.job.domain.ScClassUserInfo">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="firm" property="firm"/>
+        <result column="specialized" property="specialized"/>
+        <result column="nick_name" property="nickName"/>
+        <result column="todayAttendanceIs" property="todayAttendanceIs"/>
+        <result column="attendanceCount" property="attendanceCount"/>
+        <result column="progress" property="progress"/>
+    </resultMap>
+
+    <select id="waitNoticeCourseUser" resultMap="scClassUserInfo">
+        SELECT
+            progress.id,
+            progress.userId,
+            progress.classId,
+            progress.`name`,
+            progress.email,
+            progress.phonenumber,
+            progress.userSn,
+            progress.firm,
+            progress.posts,
+            progress.areas_of_focus,
+            progress.issue,
+            progress.specialized,
+            progress.nick_name,
+            attendance.todayAttendanceIs,
+            attendance.attendanceCount,
+            progress.progress
+        FROM
+            (
+                SELECT
+                    scui.id,
+                    COUNT( sua_today.id ) AS todayAttendanceIs,
+                    COUNT( sua_count.id ) AS attendanceCount
+                FROM
+                    sc_class_user_info scui
+                        LEFT JOIN sc_user_attendance sua_today ON (
+                        sua_today.class_info_id = scui.class_id
+                            AND sua_today.user_id = scui.user_id
+                            AND sua_today.`status` = 1
+                            AND to_days( sua_today.create_time ) = to_days(
+                                now())
+                        )
+                        LEFT JOIN sc_user_attendance sua_count ON ( sua_count.class_info_id = scui.class_id AND sua_count.user_id = scui.user_id AND sua_count.`status` = 1 )
+                WHERE
+                    scui.`status` = 1
+                  AND scui.end_time > now()
+                  AND ( scui.delete_flag != scui.id OR scui.delete_flag IS NULL )
+                GROUP BY
+                    scui.id
+            ) attendance
+        INNER JOIN (
+                SELECT
+                    scui.id,
+                    scui.user_id AS userId,
+                    scui.class_id AS classId,
+                    scui.`name`,
+                    scui.email,
+                    scui.phonenumber,
+                    scui.user_sn AS userSn,
+                    scui.firm,
+                    scui.posts,
+                    scui.areas_of_focus,
+                    scui.issue,
+                    scui.specialized,
+                    y.nick_name,
+                    CASE
+                        WHEN COUNT( DISTINCT video.id ) = 0 THEN
+                            0 ELSE (
+                                       COUNT(
+                                               DISTINCT
+                                               CASE
+
+                                                   WHEN ( TIME_TO_SEC( video.duration ) = 0 AND record.type_id IS NOT NULL )
+                                                       OR (
+                                                            record.total_duration >= 0.8 * TIME_TO_SEC( video.duration )) THEN
+                                                       video.id
+                                                   END
+                                       )
+                                       ) / COUNT(DISTINCT video.id )
+                        END AS progress
+                FROM
+                    sc_class_user_info scui
+                        INNER JOIN sys_user y ON scui.user_id = y.user_id
+                        LEFT JOIN sc_video video ON ( video.class_info_id = scui.class_id AND video.`status` = 1 )
+                        LEFT JOIN sc_class_user_record_info record ON ( record.type = 'ScVideo' AND record.type_id = video.id AND scui.user_id = record.user_id )
+                WHERE
+                    scui.`status` = 1
+                  AND scui.end_time > now()
+                  AND ( scui.delete_flag != scui.id OR scui.delete_flag IS NULL )
+                GROUP BY
+                    scui.id
+            ) progress ON attendance.id = progress.id WHERE progress.progress &lt; 1 GROUP BY progress.userId
+    </select>
+
+</mapper>
