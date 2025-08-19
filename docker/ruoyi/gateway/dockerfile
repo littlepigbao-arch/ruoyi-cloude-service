@@ -1,5 +1,5 @@
-# 基础镜像
-FROM  openjdk:8-jre
+# 基础镜像（openjdk:17-jdk-slim不包含验证码所需的字体）
+FROM  openjdk:17-jdk
 # author
 MAINTAINER ruoyi
 
