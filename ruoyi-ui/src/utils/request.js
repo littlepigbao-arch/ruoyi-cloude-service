@@ -7,6 +7,10 @@ import { tansParams, blobValidate } from "@/utils/ruoyi"
 import cache from '@/plugins/cache'
 import { saveAs } from 'file-saver'
 
+// 默认情况下，Vue CLI 会假设你的应用是被部署在一个域名的根路径上
+// 例如 https://www.ruoyi.vip/。如果应用被部署在一个子路径上，你就需要用这个选项指定这个子路径。例如，如果你的应用被部署在 https://www.ruoyi.vip/admin/，则设置 baseUrl 为 /admin/。
+export const BASE_PATH = '/'
+
 let downloadLoadingInstance
 // 是否显示重新登录
 export let isRelogin = { show: false }
