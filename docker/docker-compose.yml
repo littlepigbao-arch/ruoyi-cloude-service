@@ -1,12 +1,20 @@
 version : '3.8'
+
+networks:
+  ruoyi-net:
+    driver: bridge
+
 services:
   ruoyi-nacos:
     container_name: ruoyi-nacos
-    image: nacos/nacos-server
+    image: nacos/nacos-server:3.0.2
     build:
       context: ./nacos
     environment:
       - MODE=standalone
+      - NACOS_AUTH_TOKEN=rO0ABXNyABNqYXZhLnV0aWwuQmFzZTY0dPTZ3QE+Kk1T6mN8X0YpV3kQ7ZbJ5A==
+      - NACOS_AUTH_IDENTITY_KEY=serverIdentity
+      - NACOS_AUTH_IDENTITY_VALUE=security
     volumes:
       - ./nacos/logs/:/home/nacos/logs
       - ./nacos/conf/application.properties:/home/nacos/conf/application.properties
@@ -14,8 +22,11 @@ services:
       - "8848:8848"
       - "9848:9848"
       - "9849:9849"
+      - "8888:8080"
     depends_on:
       - ruoyi-mysql
+    networks:
+      - ruoyi-net
   ruoyi-mysql:
     container_name: ruoyi-mysql
     image: mysql:5.7
@@ -38,6 +49,8 @@ services:
     environment:
       MYSQL_DATABASE: 'ry-cloud'
       MYSQL_ROOT_PASSWORD: password
+    networks:
+      - ruoyi-net
   ruoyi-redis:
     container_name: ruoyi-redis
     image: redis
@@ -49,6 +62,8 @@ services:
       - ./redis/conf/redis.conf:/home/ruoyi/redis/redis.conf
       - ./redis/data:/data
     command: redis-server /home/ruoyi/redis/redis.conf
+    networks:
+      - ruoyi-net
   ruoyi-nginx:
     container_name: ruoyi-nginx
     image: nginx
@@ -63,8 +78,8 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - ruoyi-gateway
-    links:
-      - ruoyi-gateway
+    networks:
+      - ruoyi-net
   ruoyi-gateway:
     container_name: ruoyi-gateway
     build:
@@ -74,8 +89,9 @@ services:
       - "8080:8080"
     depends_on:
       - ruoyi-redis
-    links:
-      - ruoyi-redis
+      - ruoyi-nacos
+    networks:
+      - ruoyi-net
   ruoyi-auth:
     container_name: ruoyi-auth
     build:
@@ -85,8 +101,9 @@ services:
       - "9200:9200"
     depends_on:
       - ruoyi-redis
-    links:
-      - ruoyi-redis
+      - ruoyi-nacos
+    networks:
+      - ruoyi-net
   ruoyi-modules-system:
     container_name: ruoyi-modules-system
     build:
@@ -96,10 +113,10 @@ services:
       - "9201:9201"
     depends_on:
       - ruoyi-redis
+      - ruoyi-nacos
       - ruoyi-mysql
-    links:
-      - ruoyi-redis
-      - ruoyi-mysql
+    networks:
+      - ruoyi-net
   ruoyi-modules-gen:
     container_name: ruoyi-modules-gen
     build:
@@ -109,8 +126,8 @@ services:
       - "9202:9202"
     depends_on:
       - ruoyi-mysql
-    links:
-      - ruoyi-mysql
+    networks:
+      - ruoyi-net
   ruoyi-modules-job:
     container_name: ruoyi-modules-job
     build:
@@ -120,8 +137,8 @@ services:
       - "9203:9203"
     depends_on:
       - ruoyi-mysql
-    links:
-      - ruoyi-mysql
+    networks:
+      - ruoyi-net
   ruoyi-modules-file:
     container_name: ruoyi-modules-file
     build:
@@ -131,6 +148,8 @@ services:
       - "9300:9300"
     volumes:
     - ./ruoyi/uploadPath:/home/ruoyi/uploadPath
+    networks:
+      - ruoyi-net
   ruoyi-visual-monitor:
     container_name: ruoyi-visual-monitor
     build:
@@ -138,3 +157,5 @@ services:
       dockerfile: dockerfile
     ports:
       - "9100:9100"
+    networks:
+      - ruoyi-net
