@@ -68,6 +68,11 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
                 return R.fail("记录用户登录信息失败:" + throwable.getMessage());
             }
 
+            @Override
+            public R<Boolean> syncGO(SysUser sysUser) {
+                return R.fail("同步用户信息至GO失败:" + throwable.getMessage());
+            }
+
             @NotNull
             @Override
             public R<LoginUser> edit_Inner(@NotNull LoginUser user, @NotNull String source) {

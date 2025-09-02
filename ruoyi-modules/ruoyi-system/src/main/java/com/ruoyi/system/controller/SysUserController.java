@@ -167,6 +167,16 @@ public class SysUserController extends BaseController
     }
 
     /**
+     *记录用户登录IP地址和登录时间
+     */
+    @InnerAuth
+    @PutMapping("/syncGO")
+    public R<Boolean> syncGO(@RequestBody SysUser sysUser)
+    {
+        return R.ok(userService.syncGO(sysUser));
+    }
+
+    /**
      * 获取用户信息
      * 
      * @return 用户信息

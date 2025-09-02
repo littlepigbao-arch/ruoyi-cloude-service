@@ -13,6 +13,20 @@ public class SecurityConstants
     public static final String DETAILS_USER_ID = "user_id";
 
     /**
+     * 用户ID字段
+     */
+    public static final String DETAILS_SUB = "sub";
+
+    /**
+     * 用户ID字段
+     */
+    public static final String DETAILS_IAT= "iat";
+    /**
+     * 用户ID字段
+     */
+    public static final String DETAILS_EXP= "exp";
+
+    /**
      * 用户名字段
      */
     public static final String DETAILS_USERNAME = "username";

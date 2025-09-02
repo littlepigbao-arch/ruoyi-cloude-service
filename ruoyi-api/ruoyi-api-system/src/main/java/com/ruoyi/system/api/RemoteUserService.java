@@ -52,4 +52,10 @@ public interface RemoteUserService extends InnerRemoteUserService
      */
     @PutMapping("/user/recordlogin")
     public R<Boolean> recordUserLogin(@RequestBody SysUser sysUser, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+
+    /**
+     * 同步至go框架
+     */
+    @PostMapping("/user/syncGO")
+    public R<Boolean> syncGO(@RequestBody SysUser sysUser);
 }

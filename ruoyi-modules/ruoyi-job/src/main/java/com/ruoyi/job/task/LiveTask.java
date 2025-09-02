@@ -27,8 +27,10 @@ public class LiveTask {
     public void CourseSmsNotice(){
         List<ScClassUserInfo> list = scClassUserInfoMapper.waitNoticeCourseUser();
         list.forEach(item->{
-            log.info("发送打卡提醒",item.getUserId(),item.getNickName(),item.getPhonenumber());
-            smsAliyuncs.sendStudyNoticeSms(item.getPhonenumber());
+            if (item.getPhonenumber() !=  null && !item.getPhonenumber().trim().isEmpty()){
+                log.info("发送打卡提醒 {} {} {}",item.getUserId(),item.getNickName(),item.getPhonenumber());
+                smsAliyuncs.sendStudyNoticeSms(item.getPhonenumber());
+            }
         });
     }
 }

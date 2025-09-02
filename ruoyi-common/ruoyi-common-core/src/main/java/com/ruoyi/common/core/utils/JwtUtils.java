@@ -1,12 +1,17 @@
 package com.ruoyi.common.core.utils;
 
+import java.util.Base64;
 import java.util.Map;
 import com.ruoyi.common.core.constant.SecurityConstants;
 import com.ruoyi.common.core.constant.TokenConstants;
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.text.Convert;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+
+import javax.naming.AuthenticationException;
+import javax.servlet.http.HttpServletResponse;
 
 /**
  * Jwt工具类
@@ -15,7 +20,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
  */
 public class JwtUtils
 {
-    public static String secret = TokenConstants.SECRET;
+    public static String secret = Base64.getEncoder().encodeToString(TokenConstants.SECRET.getBytes()) ;
 
     /**
      * 从数据声明生成令牌
