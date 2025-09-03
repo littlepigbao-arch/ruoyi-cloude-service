@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.servlet.http.HttpServletRequest;
 
+import com.alibaba.fastjson.JSON;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.impl.DefaultClaims;
@@ -70,7 +71,8 @@ public class TokenService
         int now = Math.toIntExact(System.currentTimeMillis() / 1000);
         claimsMap.put(SecurityConstants.DETAILS_IAT,now);
         claimsMap.put(SecurityConstants.DETAILS_EXP,now+TOKEN_EXPIRE_TIME*60);
-
+        System.out.println("token");
+        System.out.println(JSON.toJSONString(claimsMap));
         // 接口返回信息
         Map<String, Object> rspMap = new HashMap<String, Object>();
         rspMap.put("access_token", JwtUtils.createToken(claimsMap));
