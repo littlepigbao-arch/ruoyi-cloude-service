@@ -1,9 +1,14 @@
 package com.ruoyi.common.security.service;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.servlet.http.HttpServletRequest;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.impl.DefaultClaims;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +66,10 @@ public class TokenService
         claimsMap.put(SecurityConstants.USER_KEY, token);
         claimsMap.put(SecurityConstants.DETAILS_USER_ID, userId);
         claimsMap.put(SecurityConstants.DETAILS_USERNAME, userName);
+        claimsMap.put(SecurityConstants.DETAILS_SUB,userId);
+        int now = Math.toIntExact(System.currentTimeMillis() / 1000);
+        claimsMap.put(SecurityConstants.DETAILS_IAT,now);
+        claimsMap.put(SecurityConstants.DETAILS_EXP,now+TOKEN_EXPIRE_TIME*60);
 
         // 接口返回信息
         Map<String, Object> rspMap = new HashMap<String, Object>();

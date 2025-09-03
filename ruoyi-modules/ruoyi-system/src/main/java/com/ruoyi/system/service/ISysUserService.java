@@ -171,6 +171,14 @@ public interface ISysUserService
     public boolean updateUserProfile(SysUser user);
 
     /**
+     * 同步用户基本信息
+     *
+     * @param user 用户信息
+     * @return 结果
+     */
+    public boolean syncGO(SysUser user);
+
+    /**
      * 修改用户头像
      * 
      * @param userName 用户名

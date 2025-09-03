@@ -34,7 +34,6 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler
         }
 
         String msg;
-
         if (ex instanceof NotFoundException)
         {
             msg = "服务未找到";

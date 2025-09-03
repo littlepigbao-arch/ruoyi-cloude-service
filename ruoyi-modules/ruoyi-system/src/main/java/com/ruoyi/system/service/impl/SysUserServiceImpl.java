@@ -6,12 +6,17 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.validation.Validator;
 
+import cn.hutool.system.UserInfo;
 import com.github.pagehelper.Page;
 import com.ruoyi.system.api.domain.KSysUserAccount;
+import com.ruoyi.system.domain.SyncGoUser;
 import com.ruoyi.system.service.IKSysUserService;
+import org.apache.http.client.methods.HttpPost;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -35,6 +40,7 @@ import com.ruoyi.system.mapper.SysUserRoleMapper;
 import com.ruoyi.system.service.ISysConfigService;
 import com.ruoyi.system.service.ISysDeptService;
 import com.ruoyi.system.service.ISysUserService;
+import org.springframework.web.client.RestTemplate;
 
 /**
  * 用户 业务层处理
@@ -44,6 +50,11 @@ import com.ruoyi.system.service.ISysUserService;
 @Service
 public class SysUserServiceImpl implements ISysUserService
 {
+    @Value("${go.host}")
+    private String goHost;
+    @Value("${go.accessKey}")
+    private String accessKey;
+
     private static final Logger log = LoggerFactory.getLogger(SysUserServiceImpl.class);
 
     @Autowired
@@ -72,6 +83,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     @Autowired
     protected Validator validator;
+
 
     /**
      * 根据条件分页查询用户列表
@@ -308,7 +320,9 @@ public class SysUserServiceImpl implements ISysUserService
     @Override
     public boolean registerUser(SysUser user)
     {
-        return userMapper.insertUser(user) > 0;
+        boolean res =  userMapper.insertUser(user) > 0;
+        this.syncGO(user);
+        return res;
     }
 
     /**
@@ -335,6 +349,7 @@ public class SysUserServiceImpl implements ISysUserService
                 kSysUserService.updateSysUserAccount(user.getSysUserAccount());
             }
         }
+        this.syncGO(user);
         return userMapper.updateUser(user);
     }
 
@@ -361,6 +376,7 @@ public class SysUserServiceImpl implements ISysUserService
     @Override
     public int updateUserStatus(SysUser user)
     {
+        this.syncGO(user);
         return userMapper.updateUser(user);
     }
 
@@ -373,7 +389,37 @@ public class SysUserServiceImpl implements ISysUserService
     @Override
     public boolean updateUserProfile(SysUser user)
     {
+        this.syncGO(user);
         return userMapper.updateUser(user) > 0;
+    }
+
+    /**
+     * 同步用户基本信息
+     *
+     * @param user 用户信息
+     * @return 结果
+     */
+    @Override
+    public boolean syncGO(SysUser user){
+        RestTemplate restTemplate = new RestTemplate();
+        String url = goHost + "/api/v2/mini/user/zkSyncUser/"+accessKey;
+        SyncGoUser syncGoUser = new SyncGoUser();
+        syncGoUser.setUserId(Math.toIntExact(user.getUserId()));
+        syncGoUser.setNickname(user.getNickName());
+        syncGoUser.setUsername(user.getUserName());
+        syncGoUser.setMobile(user.getPhonenumber());
+        syncGoUser.setLastIp(user.getLoginIp());
+        syncGoUser.setRemark(user.getRemark());
+        syncGoUser.setAvatar(user.getAvatar());
+        syncGoUser.setStatus(Objects.equals(user.getStatus(), "正常") ?0:1);
+        ResponseEntity<String> response = restTemplate.postForEntity(url, syncGoUser, String.class);
+        // 检查响应状态码
+        if (response.getStatusCode().is2xxSuccessful()) {
+            System.out.println("响应内容：" + response.getBody());
+        } else {
+            System.out.println("请求失败，状态码：" + response.getStatusCode());
+        }
+        return true;
     }
 
     /**
