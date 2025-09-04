@@ -2,6 +2,8 @@ package com.ruoyi.system.controller;
 
 import java.util.Arrays;
 import java.util.Map;
+
+import com.ruoyi.common.core.annotation.NoSensitive;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,6 +51,7 @@ public class SysProfileController extends BaseController
     /**
      * 个人信息
      */
+    @NoSensitive
     @GetMapping
     public AjaxResult profile()
     {

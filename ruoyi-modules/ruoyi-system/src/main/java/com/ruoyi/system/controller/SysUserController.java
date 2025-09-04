@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletResponse;
+
+import com.ruoyi.common.core.annotation.NoSensitive;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
@@ -117,6 +119,7 @@ public class SysUserController extends BaseController
     /**
      * 获取当前用户信息
      */
+    @NoSensitive
     @InnerAuth
     @GetMapping("/info/{username}")
     public R<LoginUser> info(@PathVariable("username") String username)
@@ -171,6 +174,7 @@ public class SysUserController extends BaseController
      * 
      * @return 用户信息
      */
+    @NoSensitive
     @GetMapping("getInfo")
     public AjaxResult getInfo()
     {
@@ -221,6 +225,7 @@ public class SysUserController extends BaseController
     /**
      * 根据用户编号获取详细信息
      */
+    @NoSensitive
     @RequiresPermissions("system:user:query")
     @GetMapping(value = { "/", "/{userId}" })
     public AjaxResult getInfo(@PathVariable(value = "userId", required = false) Long userId)

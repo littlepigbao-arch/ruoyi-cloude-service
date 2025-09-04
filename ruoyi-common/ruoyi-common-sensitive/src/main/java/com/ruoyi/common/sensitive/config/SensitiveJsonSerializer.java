@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.ser.ContextualSerializer;
 import com.ruoyi.common.core.constant.UserConstants;
 import com.ruoyi.common.core.context.SecurityContextHolder;
+import com.ruoyi.common.core.context.SensitiveContextHolder;
 import com.ruoyi.common.sensitive.annotation.Sensitive;
 import com.ruoyi.common.sensitive.enums.DesensitizedType;
 
@@ -25,7 +26,7 @@ public class SensitiveJsonSerializer extends JsonSerializer<String> implements C
     @Override
     public void serialize(String value, JsonGenerator gen, SerializerProvider serializers) throws IOException
     {
-        if (desensitization())
+        if (desensitization() && !SensitiveContextHolder.isNoSensitiveScope())
         {
             gen.writeString(desensitizedType.desensitizer().apply(value));
         }
