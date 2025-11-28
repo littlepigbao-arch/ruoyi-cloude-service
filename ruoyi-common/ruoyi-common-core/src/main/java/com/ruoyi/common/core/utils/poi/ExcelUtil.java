@@ -575,7 +575,7 @@ public class ExcelUtil<T>
             }
             if (Type.EXPORT.equals(type))
             {
-                fillExcelData(index, row);
+                fillExcelData(index);
                 addStatisticsRow();
             }
         }
@@ -583,12 +583,11 @@ public class ExcelUtil<T>
 
     /**
      * 填充excel数据
-     * 
+     *
      * @param index 序号
-     * @param row 单元格行
      */
     @SuppressWarnings("unchecked")
-    public void fillExcelData(int index, Row row)
+    public void fillExcelData(int index)
     {
         int startNo = index * sheetSize;
         int endNo = Math.min(startNo + sheetSize, list.size());
@@ -596,7 +595,7 @@ public class ExcelUtil<T>
 
         for (int i = startNo; i < endNo; i++)
         {
-            row = sheet.createRow(currentRowNum);
+            Row row = sheet.createRow(currentRowNum);
             T vo = (T) list.get(i);
             int column = 0;
             int maxSubListSize = getCurrentMaxSubListSize(vo);
