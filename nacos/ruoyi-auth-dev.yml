@@ -1,0 +1,5 @@
+spring:
+  data:
+    redis:
+      host: * # 替换自己的ip地址
+      port: 6379

@@ -1,6 +1,6 @@
 # Tomcat
 server:
-  port: 8080
+  port: 18080
 
 # Spring
 spring: 
@@ -14,27 +14,31 @@ spring:
     nacos:
       discovery:
         # 服务注册地址
-        server-addr: 127.0.0.1:8848
+        server-addr: 43.136.76.125:8848
+        namespace: 1c8ac19f-8d7a-4008-a291-90b162b37fd5
       config:
         # 配置中心地址
-        server-addr: 127.0.0.1:8848
+        server-addr: 43.136.76.125:8848
+        namespace: 1c8ac19f-8d7a-4008-a291-90b162b37fd5
         # 配置文件格式
         file-extension: yml
         # 共享配置
         shared-configs:
           - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
-    sentinel:
-      # 取消控制台懒加载
-      eager: true
-      transport:
-        # 控制台地址
-        dashboard: 127.0.0.1:8718
-      # nacos配置持久化
-      datasource:
-        ds1:
-          nacos:
-            server-addr: 127.0.0.1:8848
-            dataId: sentinel-ruoyi-gateway
-            groupId: DEFAULT_GROUP
-            data-type: json
-            rule-type: gw-flow
+#    sentinel:
+#      # 取消控制台懒加载
+#      eager: true
+#      transport:
+#        # 控制台地址
+#        dashboard: 127.0.0.1:8718
+#      # nacos配置持久化
+#      datasource:
+#        ds1:
+#          nacos:
+#            server-addr: 43.136.76.125:8848
+#            dataId: sentinel-ruoyi-gateway
+#            groupId: DEFAULT_GROUP
+#            data-type: json
+#            rule-type: gw-flow
+    main:
+      web-application-type: reactive
