@@ -14,7 +14,7 @@ import com.ruoyi.file.utils.FileUploadUtils;
  * @author ruoyi
  */
 @Primary
-@Service
+@Service("localSysFileService")
 public class LocalSysFileServiceImpl implements ISysFileService
 {
     /**

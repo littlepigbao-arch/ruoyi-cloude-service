@@ -17,7 +17,7 @@ import io.minio.RemoveObjectArgs;
  *
  * @author ruoyi
  */
-@Service
+@Service("minioSysFileService")
 public class MinioSysFileServiceImpl implements ISysFileService
 {
     @Autowired
@@ -36,28 +36,39 @@ public class MinioSysFileServiceImpl implements ISysFileService
     @Override
     public String uploadFile(MultipartFile file) throws Exception
     {
-        InputStream inputStream = null;
-        try
-        {
-            String fileName = FileUploadUtils.extractFilename(file);
-            inputStream = file.getInputStream();
-            PutObjectArgs args = PutObjectArgs.builder()
-                    .bucket(minioConfig.getBucketName())
-                    .object(fileName)
-                    .stream(inputStream, file.getSize(), -1)
-                    .contentType(file.getContentType())
-                    .build();
-            client.putObject(args);
-            return minioConfig.getUrl() + "/" + minioConfig.getBucketName() + "/" + fileName;
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException("Minio Failed to upload file", e);
-        }
-        finally
-        {
-            IoUtils.closeQuietly(inputStream);
-        }
+//        InputStream inputStream = null;
+//        try
+//        {
+//            String fileName = FileUploadUtils.extractFilename(file);
+//            inputStream = file.getInputStream();
+//            PutObjectArgs args = PutObjectArgs.builder()
+//                    .bucket(minioConfig.getBucketName())
+//                    .object(fileName)
+//                    .stream(inputStream, file.getSize(), -1)
+//                    .contentType(file.getContentType())
+//                    .build();
+//            client.putObject(args);
+//            return minioConfig.getUrl() + "/" + minioConfig.getBucketName() + "/" + fileName;
+//        }
+//        catch (Exception e)
+//        {
+//            throw new RuntimeException("Minio Failed to upload file", e);
+//        }
+//        finally
+//        {
+//            IoUtils.closeQuietly(inputStream);
+//        }
+        String fileName = FileUploadUtils.extractFilename(file);
+        InputStream inputStream = file.getInputStream();
+        PutObjectArgs args = PutObjectArgs.builder()
+                .bucket(minioConfig.getBucketName())
+                .object(fileName)
+                .stream(inputStream, file.getSize(), -1)
+                .contentType(file.getContentType())
+                .build();
+        client.putObject(args);
+        IoUtils.closeQuietly(inputStream);
+        return minioConfig.getUrl() + "/" + minioConfig.getBucketName() + "/" + fileName;
     }
 
     /**
