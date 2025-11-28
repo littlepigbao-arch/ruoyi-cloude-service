@@ -2,9 +2,9 @@
   <div class="app-container home">
     <el-row :gutter="20">
       <el-col :sm="24" :lg="12" style="padding-left: 20px">
-        <h2>若依后台管理框架</h2>
+        <h2>后台管理框架</h2>
         <p>
-          一直想做一款后台管理系统，看了很多优秀的开源项目但是发现没有合适自己的。于是利用空闲休息时间开始自己写一套后台系统。如此有了若依管理系统，她可以用于所有的Web应用程序，如网站管理后台，网站会员中心，CMS，CRM，OA等等，当然，您也可以对她进行深度定制，以做出更强系统。所有前端后台代码封装过后十分精简易上手，出错概率低。同时支持移动客户端访问。系统会陆续更新一些实用功能。
+          ruoyi框架 全新 Cloud 版本，优化重构所有功能。基于 Spring Cloud Alibaba + Gateway + Nacos + RocketMQ + Vue & Element 实现的后台管理系统 + 用户小程序，支持 RBAC 动态权限、多租户、数据权限、工作流、三方登录、支付、短信、商城、CRM、ERP、AI 等功能。
         </p>
         <p>
           <b>当前版本:</b> <span>v{{ version }}</span>
@@ -13,21 +13,21 @@
           <el-tag type="danger">&yen;免费开源</el-tag>
         </p>
         <p>
-          <el-button
-            type="primary"
-            size="mini"
-            icon="el-icon-cloudy"
-            plain
-            @click="goTarget('https://gitee.com/y_project/RuoYi-Cloud')"
-            >访问码云</el-button
-          >
-          <el-button
-            size="mini"
-            icon="el-icon-s-home"
-            plain
-            @click="goTarget('http://ruoyi.vip')"
-            >访问主页</el-button
-          >
+<!--          <el-button-->
+<!--            type="primary"-->
+<!--            size="mini"-->
+<!--            icon="el-icon-cloudy"-->
+<!--            plain-->
+<!--            @click="goTarget('https://gitee.com/y_project/RuoYi-Cloud')"-->
+<!--            >访问码云</el-button-->
+<!--          >-->
+<!--          <el-button-->
+<!--            size="mini"-->
+<!--            icon="el-icon-s-home"-->
+<!--            plain-->
+<!--            @click="goTarget('http://ruoyi.vip')"-->
+<!--            >访问主页</el-button-->
+<!--          >-->
         </p>
       </el-col>
 
@@ -70,35 +70,17 @@
       <el-col :xs="24" :sm="24" :md="12" :lg="8">
         <el-card class="update-log">
           <div slot="header" class="clearfix">
-            <span>联系信息</span>
+            <span>系统架构设计</span>
           </div>
           <div class="body">
-            <p>
-              <i class="el-icon-s-promotion"></i> 官网：<el-link
-                href="http://www.ruoyi.vip"
-                target="_blank"
-                >http://www.ruoyi.vip</el-link
-              >
-            </p>
-            <p>
-              <i class="el-icon-user-solid"></i> QQ群： <s> 满42799195  </s> <s> 满170157040 </s>
-              <s> 满130643120 </s> <s> 满225920371 </s> <s> 满201705537 </s> <s> 满236543183 </s>
-              <s> 满213618602 </s> <s> 满148794840 </s> <s> 满118752664 </s> <s> 满101038945 </s>
-              <s> 满128355254 </s> <s> 满179219821 </s> <s> 满158753145 </s> <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=jR7HqTiLzuLocIH6aNNtTW3LlCV8UQ6d&authKey=GJZj%2Bnwmsvk6j%2FWrX7FKstAaRjgUC1WL%2F%2B8aVTaPbHX5wOimH5q9igaOSXP7cF9L&noverify=0&group_code=112869560" target="_blank">112869560</a>
-            </p>
-            <p>
-              <i class="el-icon-chat-dot-round"></i> 微信：<a
-                href="javascript:;"
-                >/ *若依</a
-              >
-            </p>
-            <p>
-              <i class="el-icon-money"></i> 支付宝：<a
-                href="javascript:;"
-                class="支付宝信息"
-                >/ *若依</a
-              >
-            </p>
+            <img
+              src="@/assets/images/str.png"
+              alt="donate"
+              width="100%"
+            />
+            <!--            <span style="display: inline-block; height: 30px; line-height: 30px"-->
+            <!--              >你可以请作者喝杯咖啡表示鼓励</span-->
+            <!--            >-->
           </div>
         </el-card>
       </el-col>
@@ -932,17 +914,35 @@
       <el-col :xs="24" :sm="24" :md="12" :lg="8">
         <el-card class="update-log">
           <div slot="header" class="clearfix">
-            <span>捐赠支持</span>
+            <span>联系信息</span>
           </div>
           <div class="body">
-            <img
-              src="@/assets/images/pay.png"
-              alt="donate"
-              width="100%"
-            />
-            <span style="display: inline-block; height: 30px; line-height: 30px"
-              >你可以请作者喝杯咖啡表示鼓励</span
-            >
+            <!--            <p>-->
+            <!--              <i class="el-icon-s-promotion"></i> 官网：<el-link-->
+            <!--                href="http://www.ruoyi.vip"-->
+            <!--                target="_blank"-->
+            <!--                >http://www.ruoyi.vip</el-link-->
+            <!--              >-->
+            <!--            </p>-->
+            <!--            <p>-->
+            <!--              <i class="el-icon-user-solid"></i> QQ群： <s> 满42799195  </s> <s> 满170157040 </s>-->
+            <!--              <s> 满130643120 </s> <s> 满225920371 </s> <s> 满201705537 </s> <s> 满236543183 </s>-->
+            <!--              <s> 满213618602 </s> <s> 满148794840 </s> <s> 满118752664 </s> <s> 满101038945 </s>-->
+            <!--              <s> 满128355254 </s> <s> 满179219821 </s> <s> 满158753145 </s> <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=jR7HqTiLzuLocIH6aNNtTW3LlCV8UQ6d&authKey=GJZj%2Bnwmsvk6j%2FWrX7FKstAaRjgUC1WL%2F%2B8aVTaPbHX5wOimH5q9igaOSXP7cF9L&noverify=0&group_code=112869560" target="_blank">112869560</a>-->
+            <!--            </p>-->
+            <!--            <p>-->
+            <!--              <i class="el-icon-chat-dot-round"></i> 微信：<a-->
+            <!--                href="javascript:;"-->
+            <!--                >/ *若依</a-->
+            <!--              >-->
+            <!--            </p>-->
+            <!--            <p>-->
+            <!--              <i class="el-icon-money"></i> 支付宝：<a-->
+            <!--                href="javascript:;"-->
+            <!--                class="支付宝信息"-->
+            <!--                >/ *若依</a-->
+            <!--              >-->
+            <!--            </p>-->
           </div>
         </el-card>
       </el-col>
