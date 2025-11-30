@@ -2,7 +2,7 @@
   <div class="login">
     <el-form ref="loginForm" :model="loginForm" :rules="loginRules" class="login-form">
       <h3 class="title">{{title}}</h3>
-      <el-form-item prop="username">
+      <el-form-item prop="username" label="账号">
         <el-input
           v-model="loginForm.username"
           type="text"
@@ -12,7 +12,7 @@
           <svg-icon slot="prefix" icon-class="user" class="el-input__icon input-icon" />
         </el-input>
       </el-form-item>
-      <el-form-item prop="password">
+      <el-form-item prop="password" label="密码">
         <el-input
           v-model="loginForm.password"
           type="password"
@@ -23,12 +23,12 @@
           <svg-icon slot="prefix" icon-class="password" class="el-input__icon input-icon" />
         </el-input>
       </el-form-item>
-      <el-form-item prop="code" v-if="captchaEnabled">
+      <el-form-item prop="code" v-if="captchaEnabled" label="验证码">
         <el-input
           v-model="loginForm.code"
           auto-complete="off"
           placeholder="验证码"
-          style="width: 63%"
+          style="width: 170px"
           @keyup.enter.native="handleLogin"
         >
           <svg-icon slot="prefix" icon-class="validCode" class="el-input__icon input-icon" />
@@ -56,7 +56,7 @@
     </el-form>
     <!--  底部  -->
     <div class="el-login-footer">
-      <span>Copyright © 2018-2025 ruoyi.vip All Rights Reserved.</span>
+      <span>Copyright © 2024-2025 XingHai.Energy All Rights Reserved.</span>
     </div>
   </div>
 </template>
@@ -159,11 +159,15 @@ export default {
 <style rel="stylesheet/scss" lang="scss">
 .login {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
+  padding: 50px;
   align-items: center;
   height: 100%;
   background-image: url("../assets/images/login-background.jpg");
   background-size: cover;
+  position: relative;
+  min-width: 700px;
+  min-height: 700px;
 }
 .title {
   margin: 0px auto 30px auto;
