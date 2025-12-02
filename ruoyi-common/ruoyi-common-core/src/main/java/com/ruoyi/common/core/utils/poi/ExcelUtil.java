@@ -338,7 +338,10 @@ public class ExcelUtil<T>
             Map<String, Integer> cellMap = new HashMap<String, Integer>();
             // 获取表头
             Row heard = sheet.getRow(titleNum);
-            for (int i = 0; i < heard.getPhysicalNumberOfCells(); i++)
+            if (heard == null) {
+                throw new UtilException("文件标题行为空，请检查Excel文件格式");
+            }
+            for (int i = 0; i < heard.getLastCellNum(); i++) // getPhysicalNumberOfCells()容易导致列索引错位
             {
                 Cell cell = heard.getCell(i);
                 if (StringUtils.isNotNull(cell))
