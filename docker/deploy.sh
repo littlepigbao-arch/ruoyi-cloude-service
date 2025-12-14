@@ -10,6 +10,7 @@ usage() {
 port(){
 	firewall-cmd --add-port=80/tcp --permanent
 	firewall-cmd --add-port=8080/tcp --permanent
+	firewall-cmd --add-port=8181/tcp --permanent
 	firewall-cmd --add-port=8848/tcp --permanent
 	firewall-cmd --add-port=9848/tcp --permanent
 	firewall-cmd --add-port=9849/tcp --permanent
@@ -26,22 +27,22 @@ port(){
 
 # 启动基础环境（必须）
 base(){
-	docker-compose up -d ruoyi-mysql ruoyi-redis ruoyi-nacos
+	docker compose up -d ruoyi-mysql ruoyi-redis ruoyi-nacos
 }
 
 # 启动程序模块（必须）
 modules(){
-	docker-compose up -d ruoyi-nginx ruoyi-gateway ruoyi-auth ruoyi-modules-system
+	docker compose up -d ruoyi-nginx ruoyi-gateway ruoyi-auth ruoyi-modules-system
 }
 
 # 关闭所有环境/模块
 stop(){
-	docker-compose stop
+	docker compose stop
 }
 
 # 删除所有环境/模块
 rm(){
-	docker-compose rm
+	docker compose rm
 }
 
 # 根据输入参数，选择执行对应方法，不输入则执行使用说明
