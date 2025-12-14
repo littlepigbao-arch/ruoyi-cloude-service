@@ -32,8 +32,8 @@ public class WebSecurityConfigurer {
         .frameOptions()
         .disable()
         .and()
-        .authorizeRequests()
-        .antMatchers(
+        .authorizeHttpRequests()
+        .requestMatchers(
             adminContextPath + "/assets/**",
             adminContextPath + "/login",
             adminContextPath + "/actuator/**",

@@ -1,9 +1,9 @@
 package com.ruoyi.file.config;
 
 import com.ruoyi.file.filter.RefererFilter;
+import jakarta.servlet.DispatcherType;
 import java.util.HashMap;
 import java.util.Map;
-import javax.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;

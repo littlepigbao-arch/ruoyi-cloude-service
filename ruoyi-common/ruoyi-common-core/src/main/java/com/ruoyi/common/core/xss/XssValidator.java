@@ -1,10 +1,10 @@
 package com.ruoyi.common.core.xss;
 
 import com.ruoyi.common.core.utils.StringUtils;
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.validation.ConstraintValidator;
-import javax.validation.ConstraintValidatorContext;
 
 /**
  * 自定义xss校验注解实现

@@ -1,5 +1,5 @@
 # 基础镜像
-FROM nacos/nacos-server
+FROM nacos/nacos-server:v3.1.1
 # author
 LABEL org.opencontainers.image.authors="ruoyi"
 

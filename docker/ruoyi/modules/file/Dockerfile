@@ -1,5 +1,5 @@
 # 基础镜像
-FROM  openjdk:8-jre
+FROM  maven:3.9.11-eclipse-temurin-8-alpine
 # author
 LABEL org.opencontainers.image.authors="ruoyi"
 
