@@ -1,10 +1,13 @@
 <template>
-  <div class="navbar">
+  <div class="navbar" :class="'nav' + navType">
     <hamburger id="hamburger-container" :is-active="sidebar.opened" class="hamburger-container" @toggleClick="toggleSideBar" />
 
-    <breadcrumb v-if="!topNav" id="breadcrumb-container" class="breadcrumb-container" />
-    <top-nav v-if="topNav" id="topmenu-container" class="topmenu-container" />
-
+    <breadcrumb v-if="navType == 1" id="breadcrumb-container" class="breadcrumb-container" />
+    <top-nav v-if="navType == 2" id="topmenu-container" class="topmenu-container" />
+    <template v-if="navType == 3">
+      <logo v-show="showLogo" :collapse="false"></logo>
+      <top-bar id="topbar-container" class="topbar-container" />
+    </template>
     <div class="right-menu">
       <template v-if="device!=='mobile'">
         <search id="header-search" class="right-menu-item" />
@@ -34,15 +37,14 @@
           <router-link to="/user/profile">
             <el-dropdown-item>个人中心</el-dropdown-item>
           </router-link>
+          <el-dropdown-item @click.native="setLayout" v-if="setting">
+            <span>布局设置</span>
+          </el-dropdown-item>
           <el-dropdown-item divided @click.native="logout">
             <span>退出登录</span>
           </el-dropdown-item>
         </el-dropdown-menu>
       </el-dropdown>
-
-      <div class="right-menu-item hover-effect setting" @click="setLayout" v-if="setting">
-        <svg-icon icon-class="more-up" />
-      </div>
     </div>
   </div>
 </template>
@@ -51,6 +53,8 @@
 import { mapGetters } from 'vuex'
 import Breadcrumb from '@/components/Breadcrumb'
 import TopNav from '@/components/TopNav'
+import TopBar from './TopBar'
+import Logo from './Sidebar/Logo'
 import Hamburger from '@/components/Hamburger'
 import Screenfull from '@/components/Screenfull'
 import SizeSelect from '@/components/SizeSelect'
@@ -62,7 +66,9 @@ export default {
   emits: ['setLayout'],
   components: {
     Breadcrumb,
+    Logo,
     TopNav,
+    TopBar,
     Hamburger,
     Screenfull,
     SizeSelect,
@@ -82,9 +88,14 @@ export default {
         return this.$store.state.settings.showSettings
       }
     },
-    topNav: {
+    navType: {
       get() {
-        return this.$store.state.settings.topNav
+        return this.$store.state.settings.navType
+      }
+    },
+    showLogo: {
+      get() {
+        return this.$store.state.settings.sidebarLogo
       }
     }
   },
@@ -111,20 +122,33 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.navbar.nav3 {
+  .hamburger-container {
+    display: none !important;
+  }
+}
+
 .navbar {
   height: 50px;
   overflow: hidden;
   position: relative;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0,21,41,.08);
+  display: flex;
+  align-items: center;
+  // padding: 0 8px;
+  box-sizing: border-box;
 
   .hamburger-container {
     line-height: 46px;
     height: 100%;
-    float: left;
     cursor: pointer;
     transition: background .3s;
     -webkit-tap-highlight-color:transparent;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-right: 8px;
 
     &:hover {
       background: rgba(0, 0, 0, .025)
@@ -132,12 +156,21 @@ export default {
   }
 
   .breadcrumb-container {
-    float: left;
+    flex-shrink: 0;
   }
 
   .topmenu-container {
     position: absolute;
     left: 50px;
+  }
+
+  .topbar-container {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    margin-left: 8px;
   }
 
   .errLog-container {
@@ -146,9 +179,11 @@ export default {
   }
 
   .right-menu {
-    float: right;
     height: 100%;
     line-height: 50px;
+    display: flex;
+    align-items: center;
+    margin-left: auto;
 
     &:focus {
       outline: none;
@@ -178,6 +213,7 @@ export default {
 
       .avatar-wrapper {
         margin-top: 10px;
+        right: 8px;
         position: relative;
 
         .user-avatar {
@@ -190,6 +226,7 @@ export default {
         .user-nickname{
           position: relative;
           bottom: 10px;
+          left: 2px;
           font-size: 14px;
           font-weight: bold;
         }
