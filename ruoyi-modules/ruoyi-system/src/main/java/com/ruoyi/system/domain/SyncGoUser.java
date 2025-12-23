@@ -12,4 +12,6 @@ public class SyncGoUser {
     private String remark;
     private String avatar;
     private Integer status;
+    private String openId;
+    private String unionId;
 }

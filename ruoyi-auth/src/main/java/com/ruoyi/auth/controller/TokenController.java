@@ -46,11 +46,16 @@ public class TokenController
         String token = SecurityUtils.getToken(request);
         if (StringUtils.isNotEmpty(token))
         {
-            String username = JwtUtils.getUserName(token);
-            // 删除用户缓存记录
-            AuthUtil.logoutByToken(token);
-            // 记录用户退出日志
-            sysLoginService.logout(username);
+            try{
+                String username = JwtUtils.getUserName(token);
+                // 删除用户缓存记录
+                AuthUtil.logoutByToken(token);
+                // 记录用户退出日志
+                sysLoginService.logout(username);
+            }catch (Exception e){
+                System.out.println(e.getMessage());
+                return R.ok();
+            }
         }
         return R.ok();
     }

@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import javax.validation.Validator;
 
 import cn.hutool.system.UserInfo;
+import com.alibaba.fastjson.JSON;
 import com.github.pagehelper.Page;
 import com.ruoyi.system.api.domain.KSysUserAccount;
 import com.ruoyi.system.domain.SyncGoUser;
@@ -411,7 +412,11 @@ public class SysUserServiceImpl implements ISysUserService
         syncGoUser.setLastIp(user.getLoginIp());
         syncGoUser.setRemark(user.getRemark());
         syncGoUser.setAvatar(user.getAvatar());
-        syncGoUser.setStatus(Objects.equals(user.getStatus(), "正常") ?0:1);
+        syncGoUser.setStatus(Objects.equals(user.getStatus(), "1") ?1:0);
+        if (user.getSysUserAccount() != null) {
+            syncGoUser.setUnionId(user.getSysUserAccount().getWxUnionId());
+            syncGoUser.setOpenId(user.getSysUserAccount().getRoutineOpenid());
+        }
         ResponseEntity<String> response = restTemplate.postForEntity(url, syncGoUser, String.class);
         // 检查响应状态码
         if (response.getStatusCode().is2xxSuccessful()) {
