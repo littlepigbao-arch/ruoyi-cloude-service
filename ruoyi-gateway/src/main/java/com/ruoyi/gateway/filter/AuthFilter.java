@@ -44,7 +44,6 @@ public class AuthFilter implements GlobalFilter, Ordered
     {
         ServerHttpRequest request = exchange.getRequest();
         ServerHttpRequest.Builder mutate = request.mutate();
-
         String url = request.getURI().getPath();
         // 跳过不需要验证的路径
         if (StringUtils.matches(url, ignoreWhite.getWhites()))
@@ -56,11 +55,19 @@ public class AuthFilter implements GlobalFilter, Ordered
         {
             return unauthorizedResponse(exchange, "令牌不能为空");
         }
-        Claims claims = JwtUtils.parseToken(token);
+        /*Claims claims = JwtUtils.parseToken(token);
         if (claims == null)
         {
             return unauthorizedResponse(exchange, "令牌已过期或验证不正确！");
-        }
+        }*/
+         Claims claims;
+         try{
+             claims = JwtUtils.parseToken(token);
+             if (claims == null)
+                 return unauthorizedResponse(exchange, "令牌已过期或验证不正确！");
+         }catch (Exception e){
+             return unauthorizedResponse(exchange, "令牌已过期或验证不正确！");
+         }
         String userkey = JwtUtils.getUserKey(claims);
         boolean islogin = redisService.hasKey(getTokenKey(userkey));
         if (!islogin)

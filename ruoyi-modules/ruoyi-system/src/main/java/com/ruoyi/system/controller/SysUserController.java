@@ -163,7 +163,17 @@ public class SysUserController extends BaseController
     @PutMapping("/recordlogin")
     public R<Boolean> recordlogin(@RequestBody SysUser sysUser)
     {
-        return R.ok(userService.updateLoginInfo(sysUser));
+        return R.ok(userService.updateUserProfile(sysUser));
+    }
+
+    /**
+     *记录用户登录IP地址和登录时间
+     */
+    @InnerAuth
+    @PutMapping("/syncGO")
+    public R<Boolean> syncGO(@RequestBody SysUser sysUser)
+    {
+        return R.ok(userService.syncGO(sysUser));
     }
 
     /**

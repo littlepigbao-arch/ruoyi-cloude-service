@@ -2,10 +2,15 @@ package com.ruoyi.gateway.service.impl;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 import javax.imageio.ImageIO;
+
+import com.alibaba.fastjson2.JSONObject;
+import com.ujcms.commons.sms.AliyunUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.util.FastByteArrayOutputStream;
 import com.google.code.kaptcha.Producer;
@@ -34,11 +39,20 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
     @Resource(name = "captchaProducerMath")
     private Producer captchaProducerMath;
 
+    @Resource(name = "captchaProducerNumber")
+    private Producer captchaProducerNumber;
+
     @Autowired
     private RedisService redisService;
 
     @Autowired
     private CaptchaProperties captchaProperties;
+
+    @Autowired
+    private CaptchaProperties.SMS.Aliyuncs smsAliyuncs;
+
+    @Autowired
+    private Environment environment;
 
     /**
      * 生成验证码
@@ -63,17 +77,24 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
 
         String captchaType = captchaProperties.getType();
         // 生成验证码
-        if ("math".equals(captchaType))
-        {
-            String capText = captchaProducerMath.createText();
-            capStr = capText.substring(0, capText.lastIndexOf("@"));
-            code = capText.substring(capText.lastIndexOf("@") + 1);
-            image = captchaProducerMath.createImage(capStr);
-        }
-        else if ("char".equals(captchaType))
-        {
-            capStr = code = captchaProducer.createText();
-            image = captchaProducer.createImage(capStr);
+        switch (captchaType) {
+            case "number": {
+                capStr = code = captchaProducerNumber.createText();
+                image = captchaProducerNumber.createImage(capStr);
+            }
+            break;
+            case "math": {
+                String capText = captchaProducerMath.createText();
+                capStr = capText.substring(0, capText.lastIndexOf("@"));
+                code = capText.substring(capText.lastIndexOf("@") + 1);
+                image = captchaProducerMath.createImage(capStr);
+            }
+            break;
+            default: {
+                capStr = code = captchaProducer.createText();
+                image = captchaProducer.createImage(capStr);
+            }
+            break;
         }
 
         redisService.setCacheObject(verifyKey, code, Constants.CAPTCHA_EXPIRATION, TimeUnit.MINUTES);
@@ -90,6 +111,40 @@ public class ValidateCodeServiceImpl implements ValidateCodeService
 
         ajax.put("uuid", uuid);
         ajax.put("img", Base64.encode(os.toByteArray()));
+        return ajax;
+    }
+
+    @Override
+    public AjaxResult createSMSCaptcha(String receiver, String uuid) throws IOException, CaptchaException {
+        AjaxResult ajax = AjaxResult.success();
+        boolean captchaEnabled = captchaProperties.getEnabled();
+        ajax.put("captchaEnabled", captchaEnabled);
+        if (!captchaEnabled) {
+            return ajax;
+        }
+        // 保存验证码信息
+        String verifyKey = CacheConstants.CAPTCHA_CODE_KEY + receiver + ":" + uuid;
+        long expire = redisService.getExpire(verifyKey);
+        if (expire <= 0) {
+            String code = captchaProducerNumber.createText();
+            redisService.setCacheObject(verifyKey, code, Constants.CAPTCHA_EXPIRATION, TimeUnit.MINUTES);
+            expire = redisService.getExpire(verifyKey);
+            if (Arrays.stream(environment.getActiveProfiles()).toList().contains("prod")) {
+                AliyunUtils.sendSms(
+                        smsAliyuncs.getAccessKeyId(),
+                        smsAliyuncs.getAccessKeySecret(),
+                        smsAliyuncs.getSignName(),
+                        smsAliyuncs.getTemplateCode(),
+                        JSONObject.of("code", code),
+                        receiver
+                );
+            } else {
+                ajax.put("captchaCode",code);
+            }
+            ajax.put("codeLength", code.length());
+        }
+        ajax.put("expire", expire);
+        ajax.put("uuid", uuid);
         return ajax;
     }
 

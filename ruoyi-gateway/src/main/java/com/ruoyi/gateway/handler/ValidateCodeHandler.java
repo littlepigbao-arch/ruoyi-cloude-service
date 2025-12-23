@@ -1,6 +1,9 @@
 package com.ruoyi.gateway.handler;
 
 import java.io.IOException;
+import java.util.Objects;
+
+import com.ruoyi.common.core.utils.uuid.IdUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -30,7 +33,18 @@ public class ValidateCodeHandler implements HandlerFunction<ServerResponse>
         AjaxResult ajax;
         try
         {
-            ajax = validateCodeService.createCaptcha();
+            switch (serverRequest.queryParam("type").orElse("image")) {
+                case "sms":
+                    if (Objects.nonNull(serverRequest.queryParam("receiver").orElse(null))) {
+                        ajax = validateCodeService.createSMSCaptcha(
+                                serverRequest.queryParam("receiver").orElse(null),
+                                serverRequest.queryParam("uuid").orElse(IdUtils.simpleUUID())
+                        );
+                        break;
+                    }
+                default:
+                    ajax = validateCodeService.createCaptcha();
+            }
         }
         catch (CaptchaException | IOException e)
         {

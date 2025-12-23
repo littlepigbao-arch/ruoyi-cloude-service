@@ -1,6 +1,8 @@
 package com.ruoyi.system.service;
 
 import java.util.List;
+
+import com.github.pagehelper.Page;
 import com.ruoyi.system.api.domain.SysUser;
 
 /**
@@ -43,12 +45,28 @@ public interface ISysUserService
     public SysUser selectUserByUserName(String userName);
 
     /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 用户名
+     * @return 用户对象信息
+     */
+    public SysUser selectUserByPhoneNumber(String phoneNumber);
+
+    /**
      * 通过用户ID查询用户
      * 
      * @param userId 用户ID
      * @return 用户对象信息
      */
     public SysUser selectUserById(Long userId);
+
+    /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 用户名
+     * @return 用户对象信息
+     */
+    public Page<SysUser> findByPhoneNumberStartingWith(String phoneNumber);
 
     /**
      * 根据用户ID查询用户所属角色组
@@ -153,21 +171,21 @@ public interface ISysUserService
     public boolean updateUserProfile(SysUser user);
 
     /**
-     * 修改用户头像
-     * 
-     * @param userId 用户ID
-     * @param avatar 头像地址
-     * @return 结果
-     */
-    public boolean updateUserAvatar(Long userId, String avatar);
-
-    /**
-     * 更新用户登录信息（IP和登录时间）
-     * 
+     * 同步用户基本信息
+     *
      * @param user 用户信息
      * @return 结果
      */
-    public boolean updateLoginInfo(SysUser user);
+    public boolean syncGO(SysUser user);
+
+    /**
+     * 修改用户头像
+     * 
+     * @param userName 用户名
+     * @param avatar 头像地址
+     * @return 结果
+     */
+    public boolean updateUserAvatar(String userName, String avatar);
 
     /**
      * 重置用户密码
@@ -180,11 +198,11 @@ public interface ISysUserService
     /**
      * 重置用户密码
      * 
-     * @param userId 用户ID
+     * @param userName 用户名
      * @param password 密码
      * @return 结果
      */
-    public int resetUserPwd(Long userId, String password);
+    public int resetUserPwd(String userName, String password);
 
     /**
      * 通过用户ID删除用户

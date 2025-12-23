@@ -1,0 +1,42 @@
+package com.ruoyi.system.mapper
+
+import com.ruoyi.system.api.domain.KSysUserAccount
+import com.ruoyi.system.api.domain.SysUser
+import org.apache.ibatis.annotations.Param
+
+/**
+ * 用户表 数据层
+ *
+ * @author hsdllcw
+ */
+interface KSysUserMapper {
+    /**
+     * 通过id查询用户
+     *
+     * @param userId
+     * @return 用户对象信息
+     */
+    fun selectUserById(userId: Long): KSysUserAccount?
+
+    /**
+     * 通过用户名查询用户
+     *
+     * @param wxUnionId 微信unionid
+     * @return 用户对象信息
+     */
+    fun selectUserByWxUnionId(wxUnionId: String): SysUser?
+
+    /**
+     * 校验微信unionid是否唯一
+     *
+     * @param wxUnionId 微信unionid
+     * @return 结果
+     */
+    fun checkWxUnionIdUnique(wxUnionId: String): SysUser?
+
+    fun insertSysUserAccount(sysUserAccount: KSysUserAccount): Int
+
+    fun updateSysUserAccount(sysUserAccount: KSysUserAccount): Int
+
+    fun unBindWxByUserId(@Param("userId") userId: Long): Int
+}

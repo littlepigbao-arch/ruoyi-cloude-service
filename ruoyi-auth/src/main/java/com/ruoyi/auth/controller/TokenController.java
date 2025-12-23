@@ -1,11 +1,11 @@
 package com.ruoyi.auth.controller;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 import com.ruoyi.auth.form.LoginBody;
 import com.ruoyi.auth.form.RegisterBody;
 import com.ruoyi.auth.service.SysLoginService;
@@ -46,11 +46,16 @@ public class TokenController
         String token = SecurityUtils.getToken(request);
         if (StringUtils.isNotEmpty(token))
         {
-            String username = JwtUtils.getUserName(token);
-            // 删除用户缓存记录
-            AuthUtil.logoutByToken(token);
-            // 记录用户退出日志
-            sysLoginService.logout(username);
+            try{
+                String username = JwtUtils.getUserName(token);
+                // 删除用户缓存记录
+                AuthUtil.logoutByToken(token);
+                // 记录用户退出日志
+                sysLoginService.logout(username);
+            }catch (Exception e){
+                System.out.println(e.getMessage());
+                return R.ok();
+            }
         }
         return R.ok();
     }
@@ -74,5 +79,19 @@ public class TokenController
         // 用户注册
         sysLoginService.register(registerBody.getUsername(), registerBody.getPassword());
         return R.ok();
+    }
+
+
+    /**
+     * 验证令牌的端点
+     * 该方法用于验证客户端提供的令牌有效性
+     *
+     * @return ResponseEntity: 返回一个空的响应体，表示令牌验证通过
+     */
+    @RequestMapping("verify")
+    public ResponseEntity<?> verifyToken(HttpServletResponse response) {
+        response.setHeader("X-User-ID", String.valueOf(SecurityUtils.getUserId()));
+        // 返回一个HTTP 200 OK响应，表示令牌有效
+        return ResponseEntity.ok().build();
     }
 }

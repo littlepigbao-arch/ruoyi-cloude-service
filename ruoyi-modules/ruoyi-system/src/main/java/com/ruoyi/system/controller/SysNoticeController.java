@@ -89,4 +89,13 @@ public class SysNoticeController extends BaseController
     {
         return toAjax(noticeService.deleteNoticeByIds(noticeIds));
     }
+
+    /**
+     * 根据标题查询通知公告
+     */
+    @GetMapping("/no-login/{noticeTitle}")
+    public AjaxResult getInfo(@PathVariable String noticeTitle)
+    {
+        return success(noticeService.selectNoticeByNoticeTitle(noticeTitle));
+    }
 }

@@ -2,11 +2,22 @@ package com.ruoyi.system.service.impl;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.validation.Validator;
+
+import cn.hutool.system.UserInfo;
+import com.alibaba.fastjson.JSON;
+import com.github.pagehelper.Page;
+import com.ruoyi.system.api.domain.KSysUserAccount;
+import com.ruoyi.system.domain.SyncGoUser;
+import com.ruoyi.system.service.IKSysUserService;
+import org.apache.http.client.methods.HttpPost;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -30,19 +41,28 @@ import com.ruoyi.system.mapper.SysUserRoleMapper;
 import com.ruoyi.system.service.ISysConfigService;
 import com.ruoyi.system.service.ISysDeptService;
 import com.ruoyi.system.service.ISysUserService;
+import org.springframework.web.client.RestTemplate;
 
 /**
  * 用户 业务层处理
- * 
+ *
  * @author ruoyi
  */
 @Service
 public class SysUserServiceImpl implements ISysUserService
 {
+    @Value("${go.host}")
+    private String goHost;
+    @Value("${go.accessKey}")
+    private String accessKey;
+
     private static final Logger log = LoggerFactory.getLogger(SysUserServiceImpl.class);
 
     @Autowired
     private SysUserMapper userMapper;
+
+    @Autowired
+    private IKSysUserService kSysUserService;
 
     @Autowired
     private SysRoleMapper roleMapper;
@@ -65,9 +85,10 @@ public class SysUserServiceImpl implements ISysUserService
     @Autowired
     protected Validator validator;
 
+
     /**
      * 根据条件分页查询用户列表
-     * 
+     *
      * @param user 用户信息
      * @return 用户信息集合信息
      */
@@ -80,7 +101,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 根据条件分页查询已分配用户角色列表
-     * 
+     *
      * @param user 用户信息
      * @return 用户信息集合信息
      */
@@ -93,7 +114,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 根据条件分页查询未分配用户角色列表
-     * 
+     *
      * @param user 用户信息
      * @return 用户信息集合信息
      */
@@ -106,7 +127,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 通过用户名查询用户
-     * 
+     *
      * @param userName 用户名
      * @return 用户对象信息
      */
@@ -117,8 +138,30 @@ public class SysUserServiceImpl implements ISysUserService
     }
 
     /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 手机号
+     * @return 用户对象信息
+     */
+    @Override
+    public SysUser selectUserByPhoneNumber(String phoneNumber) {
+        return userMapper.selectUserByPhoneNumber(phoneNumber);
+    }
+
+    /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 手机号
+     * @return 用户对象信息
+     */
+    @Override
+    public Page<SysUser> findByPhoneNumberStartingWith(String phoneNumber) {
+        return userMapper.findByPhoneNumberStartingWith(phoneNumber);
+    }
+
+    /**
      * 通过用户ID查询用户
-     * 
+     *
      * @param userId 用户ID
      * @return 用户对象信息
      */
@@ -130,7 +173,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 查询用户所属角色组
-     * 
+     *
      * @param userName 用户名
      * @return 结果
      */
@@ -147,7 +190,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 查询用户所属岗位组
-     * 
+     *
      * @param userName 用户名
      * @return 结果
      */
@@ -164,7 +207,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 校验用户名称是否唯一
-     * 
+     *
      * @param user 用户信息
      * @return 结果
      */
@@ -218,7 +261,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 校验用户是否允许操作
-     * 
+     *
      * @param user 用户信息
      */
     @Override
@@ -232,7 +275,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 校验用户是否有数据权限
-     * 
+     *
      * @param userId 用户id
      */
     @Override
@@ -252,7 +295,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 新增保存用户信息
-     * 
+     *
      * @param user 用户信息
      * @return 结果
      */
@@ -271,26 +314,27 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 注册用户信息
-     * 
+     *
      * @param user 用户信息
      * @return 结果
      */
     @Override
     public boolean registerUser(SysUser user)
     {
-        return userMapper.insertUser(user) > 0;
+        boolean res =  userMapper.insertUser(user) > 0;
+        this.syncGO(user);
+        return res;
     }
 
     /**
      * 修改保存用户信息
-     * 
+     *
      * @param user 用户信息
      * @return 结果
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int updateUser(SysUser user)
-    {
+    public int updateUser(SysUser user) {
         Long userId = user.getUserId();
         // 删除用户与角色关联
         userRoleMapper.deleteUserRoleByUserId(userId);
@@ -300,12 +344,19 @@ public class SysUserServiceImpl implements ISysUserService
         userPostMapper.deleteUserPostByUserId(userId);
         // 新增用户与岗位管理
         insertUserPost(user);
+        // 更新微信信息
+        if (Objects.nonNull(user.getSysUserAccount())) {
+            if (Objects.nonNull(user.getSysUserAccount().getWxUnionId())) {
+                kSysUserService.updateSysUserAccount(user.getSysUserAccount());
+            }
+        }
+        this.syncGO(user);
         return userMapper.updateUser(user);
     }
 
     /**
      * 用户授权角色
-     * 
+     *
      * @param userId 用户ID
      * @param roleIds 角色组
      */
@@ -319,80 +370,104 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 修改用户状态
-     * 
+     *
      * @param user 用户信息
      * @return 结果
      */
     @Override
     public int updateUserStatus(SysUser user)
     {
-        return userMapper.updateUserStatus(user.getUserId(), user.getStatus());
+        this.syncGO(user);
+        return userMapper.updateUser(user);
     }
 
     /**
      * 修改用户基本信息
-     * 
+     *
      * @param user 用户信息
      * @return 结果
      */
     @Override
     public boolean updateUserProfile(SysUser user)
     {
+        this.syncGO(user);
         return userMapper.updateUser(user) > 0;
     }
 
     /**
+     * 同步用户基本信息
+     *
+     * @param user 用户信息
+     * @return 结果
+     */
+    @Override
+    public boolean syncGO(SysUser user){
+        RestTemplate restTemplate = new RestTemplate();
+        String url = goHost + "/api/v2/mini/user/zkSyncUser/"+accessKey;
+        SyncGoUser syncGoUser = new SyncGoUser();
+        syncGoUser.setUserId(Math.toIntExact(user.getUserId()));
+        syncGoUser.setNickname(user.getNickName());
+        syncGoUser.setUsername(user.getUserName());
+        syncGoUser.setMobile(user.getPhonenumber());
+        syncGoUser.setLastIp(user.getLoginIp());
+        syncGoUser.setRemark(user.getRemark());
+        syncGoUser.setAvatar(user.getAvatar());
+        syncGoUser.setStatus(Objects.equals(user.getStatus(), "1") ?1:0);
+        if (user.getSysUserAccount() != null) {
+            syncGoUser.setUnionId(user.getSysUserAccount().getWxUnionId());
+            syncGoUser.setOpenId(user.getSysUserAccount().getRoutineOpenid());
+        }
+        ResponseEntity<String> response = restTemplate.postForEntity(url, syncGoUser, String.class);
+        // 检查响应状态码
+        if (response.getStatusCode().is2xxSuccessful()) {
+            System.out.println("响应内容：" + response.getBody());
+        } else {
+            System.out.println("请求失败，状态码：" + response.getStatusCode());
+        }
+        return true;
+    }
+
+    /**
      * 修改用户头像
-     * 
-     * @param userId 用户ID
+     *
+     * @param userName 用户名
      * @param avatar 头像地址
      * @return 结果
      */
     @Override
-    public boolean updateUserAvatar(Long userId, String avatar)
+    public boolean updateUserAvatar(String userName, String avatar)
     {
-        return userMapper.updateUserAvatar(userId, avatar) > 0;
-    }
-
-    /**
-     * 更新用户登录信息（IP和登录时间）
-     * 
-     * @param user 用户信息
-     * @return 结果
-     */
-    public boolean updateLoginInfo(SysUser user)
-    {
-        return userMapper.updateLoginInfo(user) > 0;
+        return userMapper.updateUserAvatar(userName, avatar) > 0;
     }
 
     /**
      * 重置用户密码
-     * 
+     *
      * @param user 用户信息
      * @return 结果
      */
     @Override
     public int resetPwd(SysUser user)
     {
-        return userMapper.resetUserPwd(user.getUserId(), user.getPassword());
+        return userMapper.updateUser(user);
     }
 
     /**
      * 重置用户密码
-     * 
-     * @param userId 用户ID
+     *
+     * @param userName 用户名
      * @param password 密码
      * @return 结果
      */
     @Override
-    public int resetUserPwd(Long userId, String password)
+    public int resetUserPwd(String userName, String password)
     {
-        return userMapper.resetUserPwd(userId, password);
+        return userMapper.resetUserPwd(userName, password);
     }
 
     /**
      * 新增用户角色信息
-     * 
+     *
      * @param user 用户对象
      */
     public void insertUserRole(SysUser user)
@@ -402,7 +477,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 新增用户岗位信息
-     * 
+     *
      * @param user 用户对象
      */
     public void insertUserPost(SysUser user)
@@ -425,7 +500,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 新增用户角色信息
-     * 
+     *
      * @param userId 用户ID
      * @param roleIds 角色组
      */
@@ -448,7 +523,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 通过用户ID删除用户
-     * 
+     *
      * @param userId 用户ID
      * @return 结果
      */
@@ -465,7 +540,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 批量删除用户信息
-     * 
+     *
      * @param userIds 需要删除的用户ID
      * @return 结果
      */
@@ -487,7 +562,7 @@ public class SysUserServiceImpl implements ISysUserService
 
     /**
      * 导入用户数据
-     * 
+     *
      * @param userList 用户数据列表
      * @param isUpdateSupport 是否更新支持，如果已存在，则进行更新数据
      * @param operName 操作用户
@@ -528,7 +603,6 @@ public class SysUserServiceImpl implements ISysUserService
                     checkUserDataScope(u.getUserId());
                     deptService.checkDeptDataScope(user.getDeptId());
                     user.setUserId(u.getUserId());
-                    user.setDeptId(u.getDeptId());
                     user.setUpdateBy(operName);
                     userMapper.updateUser(user);
                     successNum++;

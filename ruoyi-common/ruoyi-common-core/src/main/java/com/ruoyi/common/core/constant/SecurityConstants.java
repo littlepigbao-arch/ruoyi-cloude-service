@@ -13,6 +13,20 @@ public class SecurityConstants
     public static final String DETAILS_USER_ID = "user_id";
 
     /**
+     * 用户ID字段
+     */
+    public static final String DETAILS_SUB = "sub";
+
+    /**
+     * 用户ID字段
+     */
+    public static final String DETAILS_IAT= "iat";
+    /**
+     * 用户ID字段
+     */
+    public static final String DETAILS_EXP= "exp";
+
+    /**
      * 用户名字段
      */
     public static final String DETAILS_USERNAME = "username";
@@ -21,6 +35,11 @@ public class SecurityConstants
      * 授权信息字段
      */
     public static final String AUTHORIZATION_HEADER = "Authorization";
+
+    /**
+     * WEBSOCKET头字段
+     */
+    public final static String WEBSOCKET_HEADER = "Sec-WebSocket-Key";
 
     /**
      * 请求来源

@@ -81,6 +81,12 @@ public class SysUser extends BaseEntity
     })
     private SysDept dept;
 
+    /** 部门对象 */
+    @Excels({
+            @Excel(name = "微信UnionId", targetAttr = "wxUnionId", type = Type.EXPORT)
+    })
+    private KSysUserAccount sysUserAccount;
+
     /** 角色对象 */
     private List<SysRole> roles;
 
@@ -271,6 +277,14 @@ public class SysUser extends BaseEntity
         this.dept = dept;
     }
 
+    public KSysUserAccount getSysUserAccount() {
+        return sysUserAccount;
+    }
+
+    public void setSysUserAccount(KSysUserAccount sysUserAccount) {
+        this.sysUserAccount = sysUserAccount;
+    }
+
     public List<SysRole> getRoles()
     {
         return roles;
@@ -334,6 +348,7 @@ public class SysUser extends BaseEntity
             .append("updateTime", getUpdateTime())
             .append("remark", getRemark())
             .append("dept", getDept())
+            .append("userAccount", getSysUserAccount())
             .toString();
     }
 }

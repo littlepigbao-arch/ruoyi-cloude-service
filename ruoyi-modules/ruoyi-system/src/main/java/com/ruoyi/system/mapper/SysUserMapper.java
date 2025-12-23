@@ -1,6 +1,8 @@
 package com.ruoyi.system.mapper;
 
 import java.util.List;
+
+import com.github.pagehelper.Page;
 import org.apache.ibatis.annotations.Param;
 import com.ruoyi.system.api.domain.SysUser;
 
@@ -44,6 +46,22 @@ public interface SysUserMapper
     public SysUser selectUserByUserName(String userName);
 
     /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 手机号
+     * @return 用户对象信息
+     */
+    public SysUser selectUserByPhoneNumber(String phoneNumber);
+
+    /**
+     * 通过手机号查询用户
+     *
+     * @param phoneNumber 手机号
+     * @return 用户对象信息
+     */
+    public Page<SysUser> findByPhoneNumberStartingWith(String phoneNumber);
+
+    /**
      * 通过用户ID查询用户
      * 
      * @param userId 用户ID
@@ -70,37 +88,20 @@ public interface SysUserMapper
     /**
      * 修改用户头像
      * 
-     * @param userId 用户ID
+     * @param userName 用户名
      * @param avatar 头像地址
      * @return 结果
      */
-    public int updateUserAvatar(@Param("userId") Long userId, @Param("avatar") String avatar);
-
-    /**
-     * 修改用户状态
-     * 
-     * @param userId 用户ID
-     * @param status 状态
-     * @return 结果
-     */
-    public int updateUserStatus(@Param("userId") Long userId, @Param("status") String status);
-
-    /**
-     * 更新用户登录信息（IP和登录时间）
-     * 
-     * @param user 用户信息
-     * @return 结果
-     */
-    public int updateLoginInfo(SysUser user);
+    public int updateUserAvatar(@Param("userName") String userName, @Param("avatar") String avatar);
 
     /**
      * 重置用户密码
      * 
-     * @param userId 用户ID
+     * @param userName 用户名
      * @param password 密码
      * @return 结果
      */
-    public int resetUserPwd(@Param("userId") Long userId, @Param("password") String password);
+    public int resetUserPwd(@Param("userName") String userName, @Param("password") String password);
 
     /**
      * 通过用户ID删除用户

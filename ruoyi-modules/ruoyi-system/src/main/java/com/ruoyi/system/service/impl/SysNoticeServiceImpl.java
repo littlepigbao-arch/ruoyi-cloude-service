@@ -89,4 +89,15 @@ public class SysNoticeServiceImpl implements ISysNoticeService
     {
         return noticeMapper.deleteNoticeByIds(noticeIds);
     }
+
+    /**
+     * 查询公告信息
+     *
+     * @param noticeTitle 公告标题
+     * @return 公告信息
+     */
+    @Override
+    public SysNotice selectNoticeByNoticeTitle(String noticeTitle) {
+        return noticeMapper.selectNoticeByNoticeTitle(noticeTitle);
+    }
 }

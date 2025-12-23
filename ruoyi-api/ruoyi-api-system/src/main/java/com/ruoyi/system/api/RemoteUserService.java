@@ -1,5 +1,6 @@
 package com.ruoyi.system.api;
 
+import com.ruoyi.system.api.inner.InnerRemoteUserService;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,7 +21,7 @@ import com.ruoyi.system.api.model.LoginUser;
  * @author ruoyi
  */
 @FeignClient(contextId = "remoteUserService", value = ServiceNameConstants.SYSTEM_SERVICE, fallbackFactory = RemoteUserFallbackFactory.class)
-public interface RemoteUserService
+public interface RemoteUserService extends InnerRemoteUserService
 {
     /**
      * 通过用户名查询用户信息
@@ -51,4 +52,10 @@ public interface RemoteUserService
      */
     @PutMapping("/user/recordlogin")
     public R<Boolean> recordUserLogin(@RequestBody SysUser sysUser, @RequestHeader(SecurityConstants.FROM_SOURCE) String source);
+
+    /**
+     * 同步至go框架
+     */
+    @PostMapping("/user/syncGO")
+    public R<Boolean> syncGO(@RequestBody SysUser sysUser);
 }
