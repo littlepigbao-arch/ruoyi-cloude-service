@@ -18,7 +18,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 @Configuration
 @EnableCaching
 @AutoConfigureBefore(RedisAutoConfiguration.class)
-public class RedisConfig extends CachingConfigurerSupport
+public class RedisConfig
 {
     @Bean
     @SuppressWarnings(value = { "unchecked", "rawtypes" })
