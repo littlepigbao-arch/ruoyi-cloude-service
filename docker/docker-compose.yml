@@ -7,11 +7,16 @@ services:
       context: ./nacos
     environment:
       - MODE=standalone
+      - NACOS_AUTH_ENABLE=true
+      - NACOS_AUTH_TOKEN=5ZGQ5ZmJ5Lq75L2g5L2K5Yqo5ZyB5Lqf5Yqg5a+555qE5Y+P5Z2w5Y+R5LiA5LiK5ZaP5a6h5Y+R5LqU55CG5ZOB5ZuX
+      - NACOS_AUTH_IDENTITY_KEY=nacosKey
+      - NACOS_AUTH_IDENTITY_VALUE=nacosValue
     volumes:
       - ./nacos/logs/:/home/nacos/logs
       - ./nacos/conf/application.properties:/home/nacos/conf/application.properties
     ports:
       - "8848:8848"
+      - "8080:8080"
       - "9848:9848"
       - "9849:9849"
     depends_on:
