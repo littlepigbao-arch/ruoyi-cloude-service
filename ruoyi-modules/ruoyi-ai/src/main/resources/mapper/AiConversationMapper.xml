@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.ai.mapper.AiConversationMapper">
+
+    <resultMap type="com.ruoyi.ai.domain.AiConversation" id="AiConversationResult">
+        <id     property="conversationId"   column="conversation_id"/>
+        <result property="userId"           column="user_id"/>
+        <result property="workbookName"     column="workbook_name"/>
+        <result property="sheetName"        column="sheet_name"/>
+        <result property="status"           column="status"/>
+        <result property="createBy"         column="create_by"/>
+        <result property="createTime"       column="create_time"/>
+        <result property="updateBy"         column="update_by"/>
+        <result property="updateTime"       column="update_time"/>
+        <result property="remark"           column="remark"/>
+    </resultMap>
+
+    <sql id="insertColumn">
+        conversation_id, user_id, workbook_name, sheet_name, status, create_by, create_time, remark
+    </sql>
+
+    <insert id="insertConversation" parameterType="com.ruoyi.ai.domain.AiConversation">
+        insert into ai_conversation (<include refid="insertColumn"/>)
+        values (
+            #{conversationId}, #{userId}, #{workbookName}, #{sheetName},
+            #{status}, #{createBy}, sysdate(), #{remark}
+        )
+    </insert>
+
+    <select id="selectByConvId" parameterType="String" resultMap="AiConversationResult">
+        select conversation_id, user_id, workbook_name, sheet_name, status,
+               create_by, create_time, update_by, update_time, remark
+        from ai_conversation
+        where conversation_id = #{conversationId}
+    </select>
+
+    <update id="updateTime">
+        update ai_conversation
+        set update_time = sysdate(), update_by = #{updateBy}
+        where conversation_id = #{conversationId}
+    </update>
+
+</mapper>
