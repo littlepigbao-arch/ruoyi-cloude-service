@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * AI 表格助手 action DTO（覆盖 21 种 type 的所有可能字段）
+ * AI 表格助手 action DTO（覆盖 24 种 type 的所有可能字段）
  * 序列化时只输出非空字段，符合前端规范的"字段必须符合校验"约束
  *
  * @author ruoyi
@@ -13,7 +13,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Action
 {
-    /** action 类型（白名单 21 种） */
+    /** action 类型（白名单 24 种） */
     private String type;
 
     /** 通用：A1 区域字符串，如 "A1"、"B2:D5"、"Sheet1!A1:B2" */
@@ -71,6 +71,22 @@ public class Action
     // ---- sumToCell 求和 ----
     private String sourceRange;
     private String targetRange;
+
+    // ---- setFilter / clearFilter / getFilter 筛选 ----
+    /** 目标列字母（如 "C"），与 columnIndex 二选一 */
+    private String column;
+
+    /** 勾选保留值列表（与 condition/customFormula 三选一） */
+    private List<String> filters;
+
+    /** 条件对象（operator+value） */
+    private FilterCondition condition;
+
+    /** 自定义公式表达式（如 ">100"、"包含张三"、"AND(>100,<200)"） */
+    private String customFormula;
+
+    /** clearFilter：true 表示移除整个 filter 框，否则只清条件 */
+    private Boolean removeFilter;
 
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
@@ -152,4 +168,36 @@ public class Action
 
     public String getTargetRange() { return targetRange; }
     public void setTargetRange(String targetRange) { this.targetRange = targetRange; }
+
+    public String getColumn() { return column; }
+    public void setColumn(String column) { this.column = column; }
+
+    public List<String> getFilters() { return filters; }
+    public void setFilters(List<String> filters) { this.filters = filters; }
+
+    public FilterCondition getCondition() { return condition; }
+    public void setCondition(FilterCondition condition) { this.condition = condition; }
+
+    public String getCustomFormula() { return customFormula; }
+    public void setCustomFormula(String customFormula) { this.customFormula = customFormula; }
+
+    public Boolean getRemoveFilter() { return removeFilter; }
+    public void setRemoveFilter(Boolean removeFilter) { this.removeFilter = removeFilter; }
+
+    /**
+     * setFilter 的条件对象：operator + value
+     * operator 取值：greaterThan/lessThan/equal/notEqual/greaterThanOrEqual/lessThanOrEqual/contains
+     * value 类型为 Object 兼容 number/string
+     */
+    public static class FilterCondition
+    {
+        private String operator;
+        private Object value;
+
+        public String getOperator() { return operator; }
+        public void setOperator(String operator) { this.operator = operator; }
+
+        public Object getValue() { return value; }
+        public void setValue(Object value) { this.value = value; }
+    }
 }

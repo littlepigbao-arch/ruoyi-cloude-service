@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,7 +68,6 @@ public class AiChatServiceImpl implements AiChatService
         catch (Throwable e)
         {
             // 直接访问服务（未经网关 AuthFilter）时，SecurityContextHolder 无登录用户
-            // SecurityUtils 静态初始化可能抛 ExceptionInInitializerError（Error 类型）
             log.warn("[AiChat] 未获取到登录用户: {}", e.getMessage());
             return R.fail(SERVICE_UNAVAILABLE, "未登录或登录已过期");
         }
@@ -79,39 +79,47 @@ public class AiChatServiceImpl implements AiChatService
             conversationId = UUID.randomUUID().toString().replace("-", "");
         }
 
-        // 2. 会话存在性检查，不存在则创建
-        AiConversation conv = conversationMapper.selectByConvId(conversationId);
-        if (conv == null)
+        // 2. 首次会话插入 conversation 记录
+        if (conversationMapper.selectByConvId(conversationId) == null)
         {
-            conv = new AiConversation();
+            AiConversation conv = new AiConversation();
             conv.setConversationId(conversationId);
             conv.setUserId(userId);
-            conv.setStatus("0");
             if (req.getContext() != null)
             {
                 conv.setWorkbookName(req.getContext().getWorkbookName());
                 conv.setSheetName(req.getContext().getSheetName());
             }
+            conv.setStatus("0");
             conv.setCreateBy(username);
+            conv.setCreateTime(new Date());
             conversationMapper.insertConversation(conv);
-            log.info("[AiChat] 新建会话 conversationId={} userId={}", conversationId, userId);
         }
 
-        // 3. 查询数据库最近 N 条对话历史（前端未传 history 时作为上下文补全）
-        List<AiMessage> dbHistory = messageMapper.selectRecentByConvId(conversationId, HISTORY_LIMIT);
-
-        // 4. 组装大模型 messages
-        List<Map<String, String>> messages = promptBuilder.buildMessages(req, dbHistory);
-
-        // 5. 持久化 user 消息
+        // 3. 持久化用户消息
         AiMessage userMsg = new AiMessage();
         userMsg.setConversationId(conversationId);
         userMsg.setRole("user");
-        userMsg.setContent(req.getMessage());
+        userMsg.setContent(req.getMessage() == null ? "" : req.getMessage());
         userMsg.setCreateBy(username);
+        userMsg.setCreateTime(new Date());
         messageMapper.insertMessage(userMsg);
 
-        // 6. 调用大模型
+        // 4. 拉取最近历史，组装 messages
+        List<AiMessage> dbHistory = messageMapper.selectRecentByConvId(conversationId, HISTORY_LIMIT);
+
+        List<Map<String, String>> messages;
+        try
+        {
+            messages = promptBuilder.buildMessages(req, dbHistory);
+        }
+        catch (Exception e)
+        {
+            log.error("[AiChat] 构造 prompt 失败", e);
+            return R.fail(SERVICE_UNAVAILABLE, "AI 服务暂时不可用");
+        }
+
+        // 5. 调用大模型
         LlmResponse llmResp;
         try
         {
@@ -119,56 +127,56 @@ public class AiChatServiceImpl implements AiChatService
         }
         catch (LlmUnavailableException e)
         {
-            log.warn("[AiChat] 大模型不可用 conversationId={}: {}", conversationId, e.getMessage());
+            log.warn("[AiChat] 大模型不可用: {}", e.getMessage());
             return R.fail(SERVICE_UNAVAILABLE, "AI 服务暂时不可用");
         }
         catch (Exception e)
         {
-            log.error("[AiChat] 大模型调用异常 conversationId={}", conversationId, e);
+            log.error("[AiChat] 大模型调用异常", e);
             return R.fail(SERVICE_UNAVAILABLE, "AI 服务暂时不可用");
         }
 
-        // 7. 解析模型输出 JSON：{"reply":"...","actions":[...],"needFeedback":false}
+        // 6. 解析模型输出为 ChatResponse
         ChatResponse chatResp;
-        String actionsJson = null;
         try
         {
-            chatResp = mapper.readValue(llmResp.getContent(), ChatResponse.class);
-            chatResp.setConversationId(conversationId);
-            if (chatResp.getNeedFeedback() == null)
+            String content = llmResp.getContent() == null ? "" : llmResp.getContent().trim();
+            chatResp = mapper.readValue(content, ChatResponse.class);
+            if (chatResp.getReply() == null)
             {
-                chatResp.setNeedFeedback(false);
-            }
-            // actions 序列化为字符串存储
-            if (chatResp.getActions() != null)
-            {
-                actionsJson = mapper.writeValueAsString(chatResp.getActions());
+                chatResp.setReply(content.length() > 200 ? content.substring(0, 200) + "..." : content);
             }
         }
         catch (Exception e)
         {
-            log.error("[AiChat] 解析模型输出失败 conversationId={} content={}", conversationId, llmResp.getContent(), e);
+            log.error("[AiChat] 解析模型输出失败: {}", e.getMessage());
             return R.fail(SERVICE_UNAVAILABLE, "AI 服务暂时不可用");
         }
 
-        // 8. 持久化 assistant 消息
+        chatResp.setConversationId(conversationId);
+
+        // 7. 持久化助手消息（含 actions JSON 字符串）
         AiMessage assistantMsg = new AiMessage();
         assistantMsg.setConversationId(conversationId);
         assistantMsg.setRole("assistant");
         assistantMsg.setContent(chatResp.getReply());
-        assistantMsg.setActions(actionsJson);
+        try
+        {
+            assistantMsg.setActions(mapper.writeValueAsString(chatResp.getActions()));
+        }
+        catch (Exception ignore)
+        {
+        }
         assistantMsg.setPromptTokens(llmResp.getPromptTokens());
         assistantMsg.setCompletionTokens(llmResp.getCompletionTokens());
         assistantMsg.setTotalTokens(llmResp.getTotalTokens());
         assistantMsg.setModel(llmResp.getModel());
         assistantMsg.setCreateBy(username);
+        assistantMsg.setCreateTime(new Date());
         messageMapper.insertMessage(assistantMsg);
 
-        // 9. 更新会话最后活动时间
+        // 8. 更新会话最后更新时间
         conversationMapper.updateTime(conversationId, username);
-
-        log.info("[AiChat] 处理成功 conversationId={} actions={}", conversationId,
-                chatResp.getActions() == null ? 0 : chatResp.getActions().size());
 
         return R.ok(chatResp);
     }
