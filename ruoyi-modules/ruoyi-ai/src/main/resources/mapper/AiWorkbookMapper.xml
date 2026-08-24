@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.ai.mapper.AiWorkbookMapper">
+
+    <resultMap type="com.ruoyi.ai.domain.AiWorkbook" id="AiWorkbookResult">
+        <id     property="workbookId"   column="workbook_id"/>
+        <result property="name"         column="name"/>
+        <result property="type"         column="doc_type"/>
+        <result property="content"      column="content"/>
+        <result property="userId"       column="user_id"/>
+        <result property="createBy"     column="create_by"/>
+        <result property="createTime"   column="create_time"/>
+        <result property="updateBy"     column="update_by"/>
+        <result property="updateTime"   column="update_time"/>
+    </resultMap>
+
+    <insert id="insertWorkbook" parameterType="com.ruoyi.ai.domain.AiWorkbook" useGeneratedKeys="true" keyProperty="workbookId">
+        insert into ai_workbook (name, doc_type, content, user_id, create_by, create_time)
+        values (
+            #{name}, #{type}, #{content}, #{userId},
+            #{createBy}, now()
+        )
+    </insert>
+
+    <update id="updateWorkbook" parameterType="com.ruoyi.ai.domain.AiWorkbook">
+        update ai_workbook
+        set name = #{name},
+            doc_type = #{type},
+            content = #{content},
+            update_by = #{updateBy},
+            update_time = now()
+        where workbook_id = #{workbookId}
+          and user_id = #{userId}
+    </update>
+
+    <!-- 列表：不含 content，避免加载大 JSON -->
+    <select id="selectListByUserId" parameterType="Long" resultMap="AiWorkbookResult">
+        select workbook_id, name, doc_type, user_id,
+               create_by, create_time, update_by, update_time
+        from ai_workbook
+        where user_id = #{userId}
+        order by update_time desc, workbook_id desc
+    </select>
+
+    <select id="selectById" resultMap="AiWorkbookResult">
+        select workbook_id, name, doc_type, content, user_id,
+               create_by, create_time, update_by, update_time
+        from ai_workbook
+        where workbook_id = #{workbookId}
+          and user_id = #{userId}
+    </select>
+
+    <delete id="deleteById">
+        delete from ai_workbook
+        where workbook_id = #{workbookId}
+          and user_id = #{userId}
+    </delete>
+
+</mapper>

@@ -21,4 +21,9 @@ public interface AiMessageMapper
      * 查询某会话最近 N 条消息（按时间升序，便于喂给大模型）
      */
     List<AiMessage> selectRecentByConvId(@Param("conversationId") String conversationId, @Param("limit") int limit);
+
+    /**
+     * 查询某会话的全部消息（按 message_id 升序，用于历史记录展示）
+     */
+    List<AiMessage> selectByConvId(@Param("conversationId") String conversationId);
 }

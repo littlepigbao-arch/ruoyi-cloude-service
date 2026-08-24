@@ -1,14 +1,19 @@
 package com.ruoyi.ai.controller;
 
+import com.ruoyi.ai.domain.AiMessage;
 import com.ruoyi.ai.domain.dto.ChatRequest;
 import com.ruoyi.ai.domain.dto.ChatResponse;
 import com.ruoyi.ai.service.AiChatService;
 import com.ruoyi.common.core.domain.R;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * AI 表格助手接口
@@ -33,5 +38,14 @@ public class AiChatController
     public R<ChatResponse> chat(@RequestBody ChatRequest req)
     {
         return aiChatService.chat(req);
+    }
+
+    /**
+     * 查询某会话的历史消息（按时间升序）
+     */
+    @GetMapping("/history/{conversationId}")
+    public R<List<AiMessage>> history(@PathVariable String conversationId)
+    {
+        return aiChatService.history(conversationId);
     }
 }

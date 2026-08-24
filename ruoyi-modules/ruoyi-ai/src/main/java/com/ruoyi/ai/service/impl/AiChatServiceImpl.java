@@ -180,4 +180,33 @@ public class AiChatServiceImpl implements AiChatService
 
         return R.ok(chatResp);
     }
+
+    @Override
+    public R<List<AiMessage>> history(String conversationId)
+    {
+        if (conversationId == null || conversationId.trim().isEmpty())
+        {
+            return R.fail("会话 ID 不能为空");
+        }
+
+        Long userId;
+        try
+        {
+            userId = SecurityUtils.getUserId();
+        }
+        catch (Throwable e)
+        {
+            return R.fail(SERVICE_UNAVAILABLE, "未登录或登录已过期");
+        }
+
+        // 校验会话归属，防止越权查询他人会话
+        AiConversation conv = conversationMapper.selectByConvId(conversationId);
+        if (conv == null || !userId.equals(conv.getUserId()))
+        {
+            return R.fail("会话不存在或无权访问");
+        }
+
+        List<AiMessage> messages = messageMapper.selectByConvId(conversationId);
+        return R.ok(messages);
+    }
 }

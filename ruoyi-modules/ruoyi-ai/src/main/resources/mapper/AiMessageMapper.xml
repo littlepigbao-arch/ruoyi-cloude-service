@@ -43,4 +43,14 @@
         order by message_id asc
     </select>
 
+    <!-- 全部消息，按 message_id 升序返回（用于历史记录展示） -->
+    <select id="selectByConvId" resultMap="AiMessageResult">
+        select message_id, conversation_id, role, content, actions,
+               prompt_tokens, completion_tokens, total_tokens, model,
+               create_by, create_time
+        from ai_message
+        where conversation_id = #{conversationId}
+        order by message_id asc
+    </select>
+
 </mapper>
