@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,5 +61,14 @@ public class AiWorkbookController
     public R<Void> remove(@PathVariable Long workbookId)
     {
         return workbookService.remove(workbookId);
+    }
+
+    /**
+     * 重命名文档
+     */
+    @PutMapping("/rename")
+    public R<AiWorkbook> rename(@RequestBody AiWorkbook workbook)
+    {
+        return workbookService.rename(workbook);
     }
 }

@@ -42,4 +42,12 @@ public interface AiWorkbookService
      * @return 统一响应 R<Void>
      */
     R<Void> remove(Long workbookId);
+
+    /**
+     * 重命名文档（校验同用户下名称唯一）
+     *
+     * @param workbook 文档（workbookId + name）
+     * @return 统一响应 R<AiWorkbook>
+     */
+    R<AiWorkbook> rename(AiWorkbook workbook);
 }

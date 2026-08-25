@@ -54,10 +54,15 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
 
         String username = SecurityUtils.getUsername();
         workbook.setUserId(userId);
+        workbook.setName(workbook.getName().trim());
 
         if (workbook.getWorkbookId() == null)
         {
-            // 新增
+            // 新增：校验同名文档
+            if (workbookMapper.countByNameAndUserId(workbook.getName(), userId, null) > 0)
+            {
+                return R.fail("文件名已存在");
+            }
             if (workbook.getType() == null || workbook.getType().trim().isEmpty())
             {
                 workbook.setType("created");
@@ -73,6 +78,11 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
             if (exist == null)
             {
                 return R.fail("文档不存在或无权访问");
+            }
+            // 校验同名文档（排除自身）
+            if (workbookMapper.countByNameAndUserId(workbook.getName(), userId, workbook.getWorkbookId()) > 0)
+            {
+                return R.fail("文件名已存在");
             }
             workbook.setType(workbook.getType() == null || workbook.getType().trim().isEmpty()
                     ? exist.getType() : workbook.getType());
@@ -127,6 +137,51 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
             return R.fail("文档不存在或无权访问");
         }
         return R.ok();
+    }
+
+    @Override
+    public R<AiWorkbook> rename(AiWorkbook workbook)
+    {
+        Long userId = getUserId();
+        if (userId == null)
+        {
+            return R.fail(503, "未登录或登录已过期");
+        }
+        if (workbook == null || workbook.getWorkbookId() == null)
+        {
+            return R.fail("文档 ID 不能为空");
+        }
+        if (workbook.getName() == null || workbook.getName().trim().isEmpty())
+        {
+            return R.fail("文档名称不能为空");
+        }
+
+        String name = workbook.getName().trim();
+
+        AiWorkbook exist = workbookMapper.selectById(workbook.getWorkbookId(), userId);
+        if (exist == null)
+        {
+            return R.fail("文档不存在或无权访问");
+        }
+        if (name.equals(exist.getName()))
+        {
+            // 名称未变，直接返回
+            exist.setContent(null);
+            return R.ok(exist);
+        }
+        if (workbookMapper.countByNameAndUserId(name, userId, workbook.getWorkbookId()) > 0)
+        {
+            return R.fail("文件名已存在");
+        }
+
+        workbookMapper.updateName(workbook.getWorkbookId(), userId, name, SecurityUtils.getUsername());
+
+        AiWorkbook saved = workbookMapper.selectById(workbook.getWorkbookId(), userId);
+        if (saved != null)
+        {
+            saved.setContent(null);
+        }
+        return R.ok(saved);
     }
 
     /**
