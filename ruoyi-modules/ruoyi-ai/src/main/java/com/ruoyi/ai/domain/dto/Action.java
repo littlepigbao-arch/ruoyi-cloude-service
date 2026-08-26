@@ -88,6 +88,25 @@ public class Action
     /** clearFilter：true 表示移除整个 filter 框，否则只清条件 */
     private Boolean removeFilter;
 
+    // ---- createChart 绘图 ----
+    /** 图表类型：bar / line / pie */
+    private String chartType;
+
+    /** 聚合方式：count(计数)/sum(求和)/avg(平均)；缺省为不聚合直接绘图 */
+    private String aggregate;
+
+    /** 分类轴区域（单列），如 "A2:A5" */
+    private String categoryRange;
+
+    /** 数值区域（单列或多列），如 "B2:B5" */
+    private String seriesRange;
+
+    /** 图表标题 */
+    private String title;
+
+    /** 系列名称 */
+    private String seriesName;
+
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
 
@@ -183,6 +202,24 @@ public class Action
 
     public Boolean getRemoveFilter() { return removeFilter; }
     public void setRemoveFilter(Boolean removeFilter) { this.removeFilter = removeFilter; }
+
+    public String getChartType() { return chartType; }
+    public void setChartType(String chartType) { this.chartType = chartType; }
+
+    public String getAggregate() { return aggregate; }
+    public void setAggregate(String aggregate) { this.aggregate = aggregate; }
+
+    public String getCategoryRange() { return categoryRange; }
+    public void setCategoryRange(String categoryRange) { this.categoryRange = categoryRange; }
+
+    public String getSeriesRange() { return seriesRange; }
+    public void setSeriesRange(String seriesRange) { this.seriesRange = seriesRange; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
+    public String getSeriesName() { return seriesName; }
+    public void setSeriesName(String seriesName) { this.seriesName = seriesName; }
 
     /**
      * setFilter 的条件对象：operator + value
