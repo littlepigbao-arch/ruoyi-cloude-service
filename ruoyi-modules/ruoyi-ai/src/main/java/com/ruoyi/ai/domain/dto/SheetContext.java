@@ -35,8 +35,11 @@ public class SheetContext
     /** 当前激活单元格 */
     private ActiveCell activeCell;
 
-    /** true 表示表格被截断（超 50 行或 26 列），数据不全 */
+    /** true 表示 values 预览被截断（超 maxRows 行或 maxCols 列），不代表全量数据范围 */
     private Boolean truncated;
+
+    /** 完整数据区域 A1 字符串（如 "A1:E41"），range 构造以此为准，不受 values 截断影响 */
+    private String dataRange;
 
     public String getWorkbookName() { return workbookName; }
     public void setWorkbookName(String workbookName) { this.workbookName = workbookName; }
@@ -73,6 +76,9 @@ public class SheetContext
 
     public Boolean getTruncated() { return truncated; }
     public void setTruncated(Boolean truncated) { this.truncated = truncated; }
+
+    public String getDataRange() { return dataRange; }
+    public void setDataRange(String dataRange) { this.dataRange = dataRange; }
 
     /** 范围对象（usedRange / selection 通用） */
     public static class Range

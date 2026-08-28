@@ -119,9 +119,11 @@ public class PromptBuilder
         sb.append("- merges：合并单元格列表\n");
         sb.append("- selection：{a1,startRow,endRow,startColumn,endColumn} 当前选区，可空\n");
         sb.append("- activeCell：{row,column,a1} 当前激活单元格\n");
-        sb.append("- truncated：true 表示表格被截断（超 50 行或 26 列）\n\n");
+        sb.append("- truncated：true 表示 values 预览被截断（超 maxRows 行或 maxCols 列），不代表全量数据范围\n");
+        sb.append("- dataRange：完整数据区域 A1 字符串（如 \"A1:E41\"），构造 range 时必须以此为准\n\n");
 
-        sb.append("【关键约定】行列号 0-based，但 actions 里的 range 统一用 A1 字符串（A1、B2:D5、Sheet1!A1:B2）\n\n");
+        sb.append("【关键约定】行列号 0-based，但 actions 里的 range 统一用 A1 字符串（A1、B2:D5、Sheet1!A1:B2）\n");
+        sb.append("【range 构造铁律】range 必须基于 usedRange/dataRange（完整数据范围）推导，**禁止用 values 的行数/列数猜范围**；values 只是预览，truncated=true 时会被截断，与全量范围无关\n\n");
 
         sb.append("【actions schema】type 必须命中下列 25 种白名单：\n");
         sb.append("setCell / setCellForCell / setValues / clearRange / setFormula / merge / breakApart / ");
@@ -176,14 +178,16 @@ public class PromptBuilder
         sb.append("【功能边界】\n");
         sb.append("- 用户说「筛选/过滤」：**支持**。用 setFilter action，不要用 FILTER 函数\n");
         sb.append("  - 文本包含：condition={operator:'contains', value:'出'}\n");
+        sb.append("  - 文本精确匹配（如「城市为台州」「性别是女」）：用 filters=['台州']，**不要用 equal**（equal 仅支持数字比较）\n");
         sb.append("  - 文本精确多值：filters=['苹果','香蕉']\n");
-        sb.append("  - 数值比较：condition={operator:'greaterThan', value:15}\n");
+        sb.append("  - 数值比较：condition={operator:'greaterThan', value:15}；数值精确相等：condition={operator:'equal', value:30}\n");
         sb.append("  - 数值范围：customFormula:'AND(>10,<50)'\n");
         sb.append("  - 取消筛选：clearFilter；移除筛选框：clearFilter + removeFilter:true\n");
         sb.append("- 用户说「排序」：暂不支持 SORT 函数，回复\"暂不支持自动排序，请手动操作\"\n");
         sb.append("- 用户说「统计…分布/人数/数量/占比/求和/平均」：**支持**。用 createChart + aggregate 聚合，不要直接画原始两列\n");
         sb.append("  - 例：统计不同城市人数 → createChart{aggregate:'count', categoryRange:城市列, chartType:'bar'}，seriesRange 可省略\n");
         sb.append("  - 例：按部门求工资总和 → createChart{aggregate:'sum', categoryRange:部门列, seriesRange:工资列}\n");
+        sb.append("  - categoryRange/seriesRange 必须覆盖 dataRange 的完整数据行（第 2 行到 usedRange 末行），禁止按 values 预览行数截断\n");
         sb.append("- 用户说「新建/创建/生成 N 行数据」：**支持**。用 setValues 写入真实示例数据，不要传空 values\n");
         sb.append("  - 首行写入表头，后续 N 行写入随机示例数据；values 必须是二维数组 [[行1],[行2],...]，禁止空数组或空单元格\n");
         sb.append("  - 示例字段：姓名（小张、小李、王芳…）、职位（工程师、设计师、产品经理…）、性别（男/女）、年龄（20~60 随机整数）等\n");
@@ -249,7 +253,12 @@ public class PromptBuilder
         sb.append("示例 11（合并两列内容到新列，单条公式覆盖整列，禁止逐行）：\n");
         sb.append("用户：合并 B 列与 C 列数据到 F 列（用空格分隔）\n");
         sb.append("context.values：[[\"姓名\",\"姓\",\"名\",\"城市\"],[\"张伟\",\"张\",\"伟\",\"北京\"],[\"李娜\",\"李\",\"娜\",\"上海\"],[\"王强\",\"王\",\"强\",\"北京\"]]\n");
-        sb.append("输出：{\"reply\":\"已将 B、C 两列用空格合并写入 F 列\",\"actions\":[{\"type\":\"setFormula\",\"range\":\"F2:F4\",\"formula\":\"=CONCATENATE(B2,\\\" \\\",C2)\"}],\"needFeedback\":false}\n");
+        sb.append("输出：{\"reply\":\"已将 B、C 两列用空格合并写入 F 列\",\"actions\":[{\"type\":\"setFormula\",\"range\":\"F2:F4\",\"formula\":\"=CONCATENATE(B2,\\\" \\\",C2)\"}],\"needFeedback\":false}\n\n");
+
+        sb.append("示例 12（多列组合筛选：数值 equal + 文本 filters）：\n");
+        sb.append("用户：筛选出30岁且城市为台州的人员\n");
+        sb.append("context.values：[[\"姓名\",\"职位\",\"性别\",\"年龄\",\"城市\"],[\"叶小主\",\"产品经理\",\"男\",30,\"台州\"],[\"张伟\",\"工程师\",\"男\",28,\"北京\"],[\"李娜\",\"设计师\",\"女\",30,\"上海\"]]\n");
+        sb.append("输出：{\"reply\":\"已筛选出 30 岁且城市为台州的人员\",\"actions\":[{\"type\":\"setFilter\",\"column\":\"D\",\"condition\":{\"operator\":\"equal\",\"value\":30}},{\"type\":\"setFilter\",\"column\":\"E\",\"filters\":[\"台州\"]}],\"needFeedback\":false}\n");
 
         return sb.toString();
     }

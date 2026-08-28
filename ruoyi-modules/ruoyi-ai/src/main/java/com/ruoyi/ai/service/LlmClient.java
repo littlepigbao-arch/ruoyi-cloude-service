@@ -41,7 +41,7 @@ public class LlmClient
     @Value("${ai.model.temperature:0.3}")
     private double temperature;
 
-    @Value("${ai.model.max-tokens:2048}")
+    @Value("${ai.model.max-tokens:4096}")
     private int maxTokens;
 
     @Value("${ai.model.timeout-ms:55000}")

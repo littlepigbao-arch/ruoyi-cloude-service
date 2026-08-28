@@ -20,10 +20,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * AI 表格助手聊天服务实现
@@ -136,13 +139,13 @@ public class AiChatServiceImpl implements AiChatService
             return R.fail(SERVICE_UNAVAILABLE, "AI 服务暂时不可用");
         }
 
-        // 6. 解析模型输出为 ChatResponse
+        // 6. 解析模型输出为 ChatResponse（含 JSON 修复兜底，避免大输出被截断后直接 503）
         ChatResponse chatResp;
         try
         {
             String content = llmResp.getContent() == null ? "" : llmResp.getContent().trim();
-            chatResp = mapper.readValue(content, ChatResponse.class);
-            if (chatResp.getReply() == null)
+            chatResp = parseChatResponse(content);
+            if (chatResp.getReply() == null || chatResp.getReply().trim().isEmpty())
             {
                 chatResp.setReply(content.length() > 200 ? content.substring(0, 200) + "..." : content);
             }
@@ -208,5 +211,109 @@ public class AiChatServiceImpl implements AiChatService
 
         List<AiMessage> messages = messageMapper.selectByConvId(conversationId);
         return R.ok(messages);
+    }
+
+    /**
+     * 解析模型输出为 ChatResponse，带 JSON 修复兜底：
+     * 1. 直接解析；2. 提取最外层 {}、去围栏、补齐未闭合的引号/括号后重试；
+     * 3. 仍失败则提取 reply 文本、actions 置空，避免大输出被截断后落到 503。
+     */
+    private ChatResponse parseChatResponse(String content)
+    {
+        try
+        {
+            return mapper.readValue(content, ChatResponse.class);
+        }
+        catch (Exception first)
+        {
+            String repaired = repairJson(content);
+            if (repaired != null)
+            {
+                try
+                {
+                    return mapper.readValue(repaired, ChatResponse.class);
+                }
+                catch (Exception second)
+                {
+                    log.warn("[AiChat] JSON 修复后仍解析失败: {}", second.getMessage());
+                }
+            }
+            // 最终兜底：至少返回 reply，不让用户看到 503
+            log.warn("[AiChat] 模型输出 JSON 非法，已降级为纯文本回复，原文前 200 字: {}", truncate(content, 200));
+            ChatResponse fallback = new ChatResponse();
+            fallback.setReply(extractReply(content));
+            fallback.setActions(new ArrayList<>());
+            fallback.setNeedFeedback(false);
+            return fallback;
+        }
+    }
+
+    /**
+     * 修复被截断/包裹的 JSON：去 markdown 围栏 → 取最外层 {} → 补齐未闭合结构
+     */
+    private String repairJson(String raw)
+    {
+        if (raw == null) return null;
+        String s = raw.trim();
+        s = s.replaceAll("(?s)^```[a-zA-Z]*\\s*", "");
+        s = s.replaceAll("(?s)\\s*```$", "");
+        s = s.trim();
+        int start = s.indexOf('{');
+        int end = s.lastIndexOf('}');
+        if (start < 0 || end < start) return null;
+        String json = s.substring(start, end + 1);
+        return balanceJson(json);
+    }
+
+    /**
+     * 补齐未闭合的字符串 / 数组 / 对象（截断在字符串中间时先闭合引号）
+     */
+    private String balanceJson(String json)
+    {
+        StringBuilder sb = new StringBuilder(json);
+        boolean inStr = false;
+        boolean esc = false;
+        int brace = 0;
+        int bracket = 0;
+        for (int i = 0; i < sb.length(); i++)
+        {
+            char c = sb.charAt(i);
+            if (inStr)
+            {
+                if (esc) esc = false;
+                else if (c == '\\') esc = true;
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            if (c == '"') { inStr = true; continue; }
+            if (c == '{') brace++;
+            else if (c == '}') brace--;
+            else if (c == '[') bracket++;
+            else if (c == ']') bracket--;
+        }
+        if (inStr) sb.append('"');
+        while (bracket > 0) { sb.append(']'); bracket--; }
+        while (brace > 0) { sb.append('}'); brace--; }
+        return sb.toString();
+    }
+
+    /**
+     * 从非法 JSON 中尽力提取 reply 文本
+     */
+    private String extractReply(String content)
+    {
+        if (content == null) return "";
+        Matcher m = Pattern.compile("\"reply\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(content);
+        if (m.find())
+        {
+            return m.group(1).replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
+        }
+        return content.length() > 200 ? content.substring(0, 200) + "..." : content;
+    }
+
+    private String truncate(String s, int max)
+    {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 }
