@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.ai.mapper.WorkbookVersionMapper">
+    <select id="selectMainBranch" resultType="java.util.HashMap">
+        select branch_id branchId, workbook_id workbookId, branch_name branchName,
+               head_commit_id headCommitId, owner_user_id ownerUserId, visibility, status, version
+        from ai_workbook_branch
+        where workbook_id=#{workbookId} and owner_user_id=#{userId} and branch_name='main' and status='active'
+        limit 1
+    </select>
+    <select id="selectBranch" resultType="java.util.HashMap">
+        select branch_id branchId, workbook_id workbookId, branch_name branchName,
+               head_commit_id headCommitId, owner_user_id ownerUserId, visibility, status, version
+        from ai_workbook_branch
+        where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId} and status='active'
+    </select>
+    <select id="selectBranches" resultType="java.util.HashMap">
+        select branch_id branchId, branch_name branchName, head_commit_id headCommitId,
+               visibility, status, version, created_time createdTime, update_time updateTime
+        from ai_workbook_branch where workbook_id=#{workbookId} and owner_user_id=#{userId}
+        order by case when branch_name='main' then 0 else 1 end, created_time
+    </select>
+    <select id="selectBranchByName" resultType="java.util.HashMap">
+        select branch_id branchId, workbook_id workbookId, branch_name branchName,
+               head_commit_id headCommitId, owner_user_id ownerUserId, visibility, status, version
+        from ai_workbook_branch
+        where workbook_id=#{workbookId} and branch_name=#{branchName} and owner_user_id=#{userId} and status='active'
+        limit 1
+    </select>
+    <insert id="insertBranch" parameterType="map" useGeneratedKeys="true" keyProperty="branchId">
+        insert into ai_workbook_branch
+          (workbook_id, branch_name, head_commit_id, owner_user_id, visibility, status, version, created_time, update_time)
+        values (#{workbookId}, #{branchName}, #{headCommitId}, #{ownerUserId}, 'private', 'active', 0, now(3), now(3))
+    </insert>
+    <select id="selectNextCommitNo" resultType="long">
+        select coalesce(max(commit_no), 0) + 1 from ai_workbook_commit where workbook_id=#{workbookId}
+    </select>
+    <select id="selectCommitByOperation" resultType="java.util.HashMap">
+        select commit_id commitId, workbook_id workbookId, branch_id branchId, parent_commit_id parentCommitId,
+               commit_no commitNo, commit_message commitMessage, source, author_user_id authorUserId,
+               operation_id operationId, before_hash beforeHash, after_hash afterHash, snapshot_id snapshotId,
+               created_time createdTime
+        from ai_workbook_commit where workbook_id=#{workbookId} and operation_id=#{operationId}
+    </select>
+    <select id="selectCommit" resultType="java.util.HashMap">
+        select c.commit_id commitId, c.workbook_id workbookId, c.branch_id branchId,
+               c.parent_commit_id parentCommitId, c.second_parent_id secondParentId, c.commit_no commitNo,
+               c.commit_message commitMessage, c.source, c.author_user_id authorUserId, c.author_name authorName,
+               c.operation_id operationId, c.action_schema_version actionSchemaVersion,
+               c.planned_actions_json plannedActionsJson, c.executed_changes_json executedChangesJson,
+               c.inverse_changes_json inverseChangesJson, c.diff_summary_json diffSummaryJson,
+               c.knowledge_refs_json knowledgeRefsJson, c.data_context_json dataContextJson,
+               c.execution_context_json executionContextJson, c.before_hash beforeHash, c.after_hash afterHash,
+               c.validation_json validationJson, c.snapshot_id snapshotId, c.created_time createdTime
+        from ai_workbook_commit c join ai_workbook w on w.workbook_id=c.workbook_id
+        where c.workbook_id=#{workbookId} and c.commit_id=#{commitId} and w.user_id=#{userId}
+    </select>
+    <select id="selectCommits" resultType="java.util.HashMap">
+        select c.commit_id commitId, c.branch_id branchId, c.parent_commit_id parentCommitId,
+               c.commit_no commitNo, c.commit_message commitMessage, c.source, c.author_name authorName,
+               c.before_hash beforeHash, c.after_hash afterHash, c.snapshot_id snapshotId, c.created_time createdTime
+        from ai_workbook_commit c join ai_workbook w on w.workbook_id=c.workbook_id
+        where c.workbook_id=#{workbookId} and w.user_id=#{userId}
+        order by c.commit_no desc
+    </select>
+    <insert id="insertCommit" parameterType="map">
+        insert into ai_workbook_commit
+          (commit_id, workbook_id, branch_id, parent_commit_id, second_parent_id, commit_no, commit_message,
+           source, author_user_id, author_name, operation_id, action_schema_version, planned_actions_json,
+           executed_changes_json, inverse_changes_json, diff_summary_json, knowledge_refs_json, data_context_json,
+           execution_context_json, before_hash, after_hash, validation_json, snapshot_id, created_time)
+        values
+          (#{commitId}, #{workbookId}, #{branchId}, #{parentCommitId}, #{secondParentId}, #{commitNo}, #{commitMessage},
+           #{source}, #{authorUserId}, #{authorName}, #{operationId}, #{actionSchemaVersion}, #{plannedActionsJson},
+           #{executedChangesJson}, #{inverseChangesJson}, #{diffSummaryJson}, #{knowledgeRefsJson}, #{dataContextJson},
+           #{executionContextJson}, #{beforeHash}, #{afterHash}, #{validationJson}, #{snapshotId}, now(3))
+    </insert>
+    <insert id="insertSnapshot" parameterType="map">
+        insert into ai_workbook_snapshot
+          (snapshot_id, workbook_id, commit_id, snapshot_type, content_blob, content_hash, codec, created_time)
+        values (#{snapshotId}, #{workbookId}, #{commitId}, #{snapshotType}, #{content}, #{contentHash}, 'plain', now(3))
+    </insert>
+    <select id="selectSnapshotByCommit" resultType="java.util.HashMap">
+        select s.snapshot_id snapshotId, s.workbook_id workbookId, s.commit_id commitId,
+               s.snapshot_type snapshotType, cast(s.content_blob as char character set utf8mb4) content,
+               s.content_hash contentHash, s.codec, s.created_time createdTime
+        from ai_workbook_snapshot s join ai_workbook w on w.workbook_id=s.workbook_id
+        where s.workbook_id=#{workbookId} and s.commit_id=#{commitId} and w.user_id=#{userId}
+    </select>
+    <update id="updateBranchHead">
+        update ai_workbook_branch set head_commit_id=#{headCommitId}, version=version+1, update_time=now(3)
+        where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId}
+          and version=#{expectedVersion} and status='active'
+    </update>
+    <insert id="upsertWorkingState" parameterType="map">
+        insert into ai_workbook_working_state
+          (workbook_id, branch_id, owner_user_id, base_commit_id, draft_actions_json,
+           executed_changes_json, draft_snapshot, content_hash, version, update_time)
+        values (#{workbookId}, #{branchId}, #{ownerUserId}, #{baseCommitId}, #{draftActionsJson},
+                #{executedChangesJson}, #{content}, #{contentHash}, 0, now(3))
+        on duplicate key update
+          base_commit_id=values(base_commit_id), draft_actions_json=values(draft_actions_json),
+          executed_changes_json=values(executed_changes_json), draft_snapshot=values(draft_snapshot),
+          content_hash=values(content_hash), version=version+1, update_time=now(3)
+    </insert>
+    <select id="selectWorkingState" resultType="java.util.HashMap">
+        select workbook_id workbookId, branch_id branchId, owner_user_id ownerUserId,
+               base_commit_id baseCommitId, draft_actions_json draftActionsJson,
+               executed_changes_json executedChangesJson,
+               cast(draft_snapshot as char character set utf8mb4) content,
+               content_hash contentHash, version, update_time updateTime
+        from ai_workbook_working_state
+        where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId}
+    </select>
+    <delete id="deleteWorkingState">
+        delete from ai_workbook_working_state where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId}
+    </delete>
+</mapper>
