@@ -3,7 +3,6 @@ package com.ruoyi.ai.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.ai.domain.AiMessage;
 import com.ruoyi.ai.domain.dto.ChatRequest;
-import com.ruoyi.ai.domain.dto.HistoryItem;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -40,24 +39,12 @@ public class PromptBuilder
         sys.put("content", SYSTEM_PROMPT);
         messages.add(sys);
 
-        // 2. 前端传的 history（优先）
-        if (req.getHistory() != null)
+        // 2. 只使用服务端查询的历史，不信任客户端传入的角色/内容
+        if (dbHistory != null && !dbHistory.isEmpty())
         {
-            for (HistoryItem h : req.getHistory())
-            {
-                if (h.getRole() == null || h.getContent() == null) continue;
-                Map<String, String> m = new HashMap<>(2);
-                m.put("role", h.getRole());
-                m.put("content", h.getContent());
-                messages.add(m);
-            }
-        }
-        else if (dbHistory != null && !dbHistory.isEmpty())
-        {
-            // 前端未传 history 时，使用数据库补全
             for (AiMessage h : dbHistory)
             {
-                if (h.getRole() == null || h.getContent() == null) continue;
+                if (!("user".equals(h.getRole()) || "assistant".equals(h.getRole())) || h.getContent() == null) continue;
                 Map<String, String> m = new HashMap<>(2);
                 m.put("role", h.getRole());
                 m.put("content", h.getContent());
@@ -91,7 +78,7 @@ public class PromptBuilder
             catch (Exception e)
             {
                 sb.append("{workbookName:").append(req.getContext().getWorkbookName())
-                  .append(",sheetName:").append(req.getContext().getSheetName()).append("}");
+                  .append(",activeSheetName:").append(req.getContext().getActiveSheetName()).append("}");
             }
         }
         else
@@ -110,8 +97,9 @@ public class PromptBuilder
         StringBuilder sb = new StringBuilder();
         sb.append("你是 Excel 表格助手。用户用中文描述对当前表格的操作意图，你需要把它解析为结构化的 actions JSON 数组，前端执行器会按序执行。\n\n");
 
-        sb.append("【表格 context 结构】用户消息会附带当前 sheet 的 JSON 快照：\n");
-        sb.append("- workbookName/sheetName/sheetId\n");
+        sb.append("【表格 context 结构】用户消息会附带工作簿的多 Sheet JSON 摘要：\n");
+        sb.append("- workbookName/activeSheetName/activeSheetId\n");
+        sb.append("- sheets：工作表摘要数组，每项包含 sheetName/sheetId，写动作必须明确目标 Sheet\n");
         sb.append("- rowCount/columnCount：sheet 总行/列数\n");
         sb.append("- usedRange：{startRow,endRow,startColumn,endColumn}，实际有数据范围（0-based 含端点）\n");
         sb.append("- values：二维数组 [行][列]，0-based 对齐 usedRange\n");
@@ -122,7 +110,9 @@ public class PromptBuilder
         sb.append("- truncated：true 表示 values 预览被截断（超 maxRows 行或 maxCols 列），不代表全量数据范围\n");
         sb.append("- dataRange：完整数据区域 A1 字符串（如 \"A1:E41\"），构造 range 时必须以此为准\n\n");
 
-        sb.append("【关键约定】行列号 0-based，但 actions 里的 range 统一用 A1 字符串（A1、B2:D5、Sheet1!A1:B2）\n");
+        sb.append("【关键约定】行列号 0-based，但 actions 的 target.range 统一用 Sheet 内 A1 字符串（A1、B2:D5）\n");
+        sb.append("【跨 Sheet 定位铁律】每个写 action 必须输出 target:{sheetId,sheetName,range?}；sheetId 必须来自 context.sheets，禁止猜测\n");
+        sb.append("【协议版本】每个 action 输出 schemaVersion:'2.0'\n");
         sb.append("【range 构造铁律】range 必须基于 usedRange/dataRange（完整数据范围）推导，**禁止用 values 的行数/列数猜范围**；values 只是预览，truncated=true 时会被截断，与全量范围无关\n\n");
 
         sb.append("【actions schema】type 必须命中下列 25 种白名单：\n");
@@ -202,7 +192,7 @@ public class PromptBuilder
         sb.append("  - range 必须覆盖全部数据行（第 2 行到 usedRange 末行），不要只写前 30 行\n\n");
 
         sb.append("【输出格式】只输出 JSON，不要 markdown 围栏或解释文字：\n");
-        sb.append("{\"reply\":\"自然语言回复\",\"actions\":[...],\"needFeedback\":false}\n\n");
+        sb.append("{\"reply\":\"自然语言回复\",\"actions\":[{\"schemaVersion\":\"2.0\",\"type\":\"setCell\",\"target\":{\"sheetId\":\"来自context\",\"sheetName\":\"工作表名\",\"range\":\"A1\"},\"value\":100}],\"needFeedback\":false}\n\n");
 
         sb.append("【few-shot 示例】\n");
         sb.append("示例 1：\n");

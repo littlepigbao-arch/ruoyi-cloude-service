@@ -15,6 +15,9 @@ public class AiConversation
     /** 用户 ID */
     private Long userId;
 
+    /** 绑定的工作簿 ID；旧会话可能为空 */
+    private Long workbookId;
+
     /** 工作簿名 */
     private String workbookName;
 
@@ -35,6 +38,9 @@ public class AiConversation
 
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
+
+    public Long getWorkbookId() { return workbookId; }
+    public void setWorkbookId(Long workbookId) { this.workbookId = workbookId; }
 
     public String getWorkbookName() { return workbookName; }
     public void setWorkbookName(String workbookName) { this.workbookName = workbookName; }

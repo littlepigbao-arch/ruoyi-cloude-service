@@ -8,6 +8,10 @@
         <result property="type"         column="doc_type"/>
         <result property="content"      column="content"/>
         <result property="userId"       column="user_id"/>
+        <result property="version"      column="version"/>
+        <result property="contentHash"  column="content_hash"/>
+        <result property="currentBranchId" column="current_branch_id"/>
+        <result property="headCommitId" column="head_commit_id"/>
         <result property="createBy"     column="create_by"/>
         <result property="createTime"   column="create_time"/>
         <result property="updateBy"     column="update_by"/>
@@ -15,9 +19,9 @@
     </resultMap>
 
     <insert id="insertWorkbook" parameterType="com.ruoyi.ai.domain.AiWorkbook" useGeneratedKeys="true" keyProperty="workbookId">
-        insert into ai_workbook (name, doc_type, content, user_id, create_by, create_time)
+        insert into ai_workbook (name, doc_type, content, content_hash, version, user_id, create_by, create_time)
         values (
-            #{name}, #{type}, #{content}, #{userId},
+            #{name}, #{type}, #{content}, #{contentHash}, 0, #{userId},
             #{createBy}, now()
         )
     </insert>
@@ -27,15 +31,19 @@
         set name = #{name},
             doc_type = #{type},
             content = #{content},
+            content_hash = #{contentHash},
+            version = version + 1,
             update_by = #{updateBy},
             update_time = now()
         where workbook_id = #{workbookId}
           and user_id = #{userId}
+          and version = #{version}
     </update>
 
     <!-- 列表：不含 content，避免加载大 JSON -->
     <select id="selectListByUserId" parameterType="Long" resultMap="AiWorkbookResult">
-        select workbook_id, name, doc_type, user_id,
+        select workbook_id, name, doc_type, user_id, version, content_hash,
+               current_branch_id, head_commit_id,
                create_by, create_time, update_by, update_time
         from ai_workbook
         where user_id = #{userId}
@@ -43,11 +51,17 @@
     </select>
 
     <select id="selectById" resultMap="AiWorkbookResult">
-        select workbook_id, name, doc_type, content, user_id,
+        select workbook_id, name, doc_type, content, user_id, version, content_hash,
+               current_branch_id, head_commit_id,
                create_by, create_time, update_by, update_time
         from ai_workbook
         where workbook_id = #{workbookId}
           and user_id = #{userId}
+    </select>
+
+    <select id="countByIdAndUserId" resultType="int">
+        select count(*) from ai_workbook
+        where workbook_id = #{workbookId} and user_id = #{userId}
     </select>
 
     <delete id="deleteById">
@@ -73,6 +87,13 @@
             update_time = now()
         where workbook_id = #{workbookId}
           and user_id = #{userId}
+    </update>
+
+    <update id="updateVersionPointers">
+        update ai_workbook
+        set current_branch_id=#{branchId}, head_commit_id=#{headCommitId}, content=#{content},
+            content_hash=#{contentHash}, version=version+1, update_by=#{updateBy}, update_time=now(3)
+        where workbook_id=#{workbookId} and user_id=#{userId}
     </update>
 
 </mapper>

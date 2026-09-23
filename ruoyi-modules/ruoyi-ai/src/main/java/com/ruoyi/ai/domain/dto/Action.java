@@ -13,8 +13,23 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Action
 {
+    /** 动作协议版本 */
+    private String schemaVersion;
+
+    /** 客户端生成的幂等操作 ID */
+    private String operationId;
+
     /** action 类型（白名单 24 种） */
     private String type;
+
+    /** V2 目标定位；sheetId 是执行主键，sheetName 仅用于展示和兼容 */
+    private Target target;
+
+    /** V1 兼容字段；新动作应使用 target.sheetId */
+    private String sheetId;
+
+    /** V1 兼容字段；新动作应使用 target.sheetName */
+    private String sheetName;
 
     /** 通用：A1 区域字符串，如 "A1"、"B2:D5"、"Sheet1!A1:B2" */
     private String range;
@@ -107,8 +122,23 @@ public class Action
     /** 系列名称 */
     private String seriesName;
 
+    public String getSchemaVersion() { return schemaVersion; }
+    public void setSchemaVersion(String schemaVersion) { this.schemaVersion = schemaVersion; }
+
+    public String getOperationId() { return operationId; }
+    public void setOperationId(String operationId) { this.operationId = operationId; }
+
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
+
+    public Target getTarget() { return target; }
+    public void setTarget(Target target) { this.target = target; }
+
+    public String getSheetId() { return sheetId; }
+    public void setSheetId(String sheetId) { this.sheetId = sheetId; }
+
+    public String getSheetName() { return sheetName; }
+    public void setSheetName(String sheetName) { this.sheetName = sheetName; }
 
     public String getRange() { return range; }
     public void setRange(String range) { this.range = range; }
@@ -220,6 +250,22 @@ public class Action
 
     public String getSeriesName() { return seriesName; }
     public void setSeriesName(String seriesName) { this.seriesName = seriesName; }
+
+    public static class Target
+    {
+        private String sheetId;
+        private String sheetName;
+        private String range;
+
+        public String getSheetId() { return sheetId; }
+        public void setSheetId(String sheetId) { this.sheetId = sheetId; }
+
+        public String getSheetName() { return sheetName; }
+        public void setSheetName(String sheetName) { this.sheetName = sheetName; }
+
+        public String getRange() { return range; }
+        public void setRange(String range) { this.range = range; }
+    }
 
     /**
      * setFilter 的条件对象：operator + value

@@ -5,7 +5,9 @@ import com.ruoyi.ai.domain.AiConversation;
 import com.ruoyi.ai.domain.AiMessage;
 import com.ruoyi.ai.domain.dto.ChatRequest;
 import com.ruoyi.ai.domain.dto.ChatResponse;
+import com.ruoyi.ai.domain.dto.Action;
 import com.ruoyi.ai.mapper.AiConversationMapper;
+import com.ruoyi.ai.mapper.AiWorkbookMapper;
 import com.ruoyi.ai.mapper.AiMessageMapper;
 import com.ruoyi.ai.service.AiChatService;
 import com.ruoyi.ai.service.LlmClient;
@@ -47,6 +49,9 @@ public class AiChatServiceImpl implements AiChatService
     private AiConversationMapper conversationMapper;
 
     @Autowired
+    private AiWorkbookMapper workbookMapper;
+
+    @Autowired
     private AiMessageMapper messageMapper;
 
     @Autowired
@@ -74,6 +79,10 @@ public class AiChatServiceImpl implements AiChatService
             log.warn("[AiChat] 未获取到登录用户: {}", e.getMessage());
             return R.fail(SERVICE_UNAVAILABLE, "未登录或登录已过期");
         }
+        if (userId == null)
+        {
+            return R.fail(SERVICE_UNAVAILABLE, "未登录或登录已过期");
+        }
 
         // 1. 会话 ID 处理（前端传则用之，否则生成新的）
         String conversationId = req.getConversationId();
@@ -82,22 +91,37 @@ public class AiChatServiceImpl implements AiChatService
             conversationId = UUID.randomUUID().toString().replace("-", "");
         }
 
-        // 2. 首次会话插入 conversation 记录
-        if (conversationMapper.selectByConvId(conversationId) == null)
+        // 2. 校验会话归属及工作簿绑定，再读取/写入任何消息
+        AiConversation conv = conversationMapper.selectByConvId(conversationId);
+        Long workbookId = req.getContext() == null ? null : req.getContext().getWorkbookId();
+        if (workbookId != null && workbookMapper.countByIdAndUserId(workbookId, userId) == 0)
         {
-            AiConversation conv = new AiConversation();
+            return R.fail("工作簿不存在或无权访问");
+        }
+        if (conv == null)
+        {
+            conv = new AiConversation();
             conv.setConversationId(conversationId);
             conv.setUserId(userId);
+            conv.setWorkbookId(workbookId);
             if (req.getContext() != null)
             {
                 conv.setWorkbookName(req.getContext().getWorkbookName());
-                conv.setSheetName(req.getContext().getSheetName());
+                conv.setSheetName(req.getContext().getActiveSheetName());
             }
             conv.setStatus("0");
             conv.setCreateBy(username);
             conv.setCreateTime(new Date());
             conversationMapper.insertConversation(conv);
         }
+        else if (!userId.equals(conv.getUserId()) ||
+                (conv.getWorkbookId() == null ? workbookId != null : !conv.getWorkbookId().equals(workbookId)))
+        {
+            return R.fail("会话不存在或无权访问");
+        }
+
+        // 当前消息尚未入库，避免在模型输入中出现两次。
+        List<AiMessage> dbHistory = messageMapper.selectRecentByConvId(conversationId, HISTORY_LIMIT);
 
         // 3. 持久化用户消息
         AiMessage userMsg = new AiMessage();
@@ -108,9 +132,7 @@ public class AiChatServiceImpl implements AiChatService
         userMsg.setCreateTime(new Date());
         messageMapper.insertMessage(userMsg);
 
-        // 4. 拉取最近历史，组装 messages
-        List<AiMessage> dbHistory = messageMapper.selectRecentByConvId(conversationId, HISTORY_LIMIT);
-
+        // 4. 由服务端可信历史组装 messages
         List<Map<String, String>> messages;
         try
         {
@@ -157,6 +179,7 @@ public class AiChatServiceImpl implements AiChatService
         }
 
         chatResp.setConversationId(conversationId);
+        normalizeActionTargets(chatResp, req);
 
         // 7. 持久化助手消息（含 actions JSON 字符串）
         AiMessage assistantMsg = new AiMessage();
@@ -184,6 +207,28 @@ public class AiChatServiceImpl implements AiChatService
         return R.ok(chatResp);
     }
 
+    /**
+     * 兼容旧 Prompt/模型输出：未提供 V2 target 时只允许落到当前活动 Sheet，
+     * 并在返回前补齐稳定 sheetId，避免前端仅按名称或 range 前缀猜测目标。
+     */
+    private void normalizeActionTargets(ChatResponse response, ChatRequest request)
+    {
+        if (response.getActions() == null || request.getContext() == null) return;
+        for (Action action : response.getActions())
+        {
+            if (action == null) continue;
+            if (action.getTarget() == null)
+            {
+                Action.Target target = new Action.Target();
+                target.setSheetId(action.getSheetId() == null ? request.getContext().getActiveSheetId() : action.getSheetId());
+                target.setSheetName(action.getSheetName() == null ? request.getContext().getActiveSheetName() : action.getSheetName());
+                target.setRange(action.getRange());
+                action.setTarget(target);
+            }
+            action.setSchemaVersion("2.0");
+        }
+    }
+
     @Override
     public R<List<AiMessage>> history(String conversationId)
     {
@@ -198,6 +243,10 @@ public class AiChatServiceImpl implements AiChatService
             userId = SecurityUtils.getUserId();
         }
         catch (Throwable e)
+        {
+            return R.fail(SERVICE_UNAVAILABLE, "未登录或登录已过期");
+        }
+        if (userId == null)
         {
             return R.fail(SERVICE_UNAVAILABLE, "未登录或登录已过期");
         }

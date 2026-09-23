@@ -32,6 +32,9 @@ public interface AiWorkbookMapper
      */
     AiWorkbook selectById(@Param("workbookId") Long workbookId, @Param("userId") Long userId);
 
+    /** 轻量鉴权检查，不读取完整工作簿快照 */
+    int countByIdAndUserId(@Param("workbookId") Long workbookId, @Param("userId") Long userId);
+
     /**
      * 按 ID + 用户删除文档
      */
@@ -46,4 +49,9 @@ public interface AiWorkbookMapper
      * 仅更新文档名称
      */
     int updateName(@Param("workbookId") Long workbookId, @Param("userId") Long userId, @Param("name") String name, @Param("updateBy") String updateBy);
+
+    int updateVersionPointers(@Param("workbookId") Long workbookId, @Param("userId") Long userId,
+                              @Param("branchId") Long branchId, @Param("headCommitId") String headCommitId,
+                              @Param("content") String content, @Param("contentHash") String contentHash,
+                              @Param("updateBy") String updateBy);
 }

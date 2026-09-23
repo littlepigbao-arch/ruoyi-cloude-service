@@ -9,9 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.ruoyi.ai.service.WorkbookVersionService;
 
 import java.util.Date;
 import java.util.List;
+import com.ruoyi.ai.util.ContentHashUtils;
 
 /**
  * AI 报表文档服务实现
@@ -26,6 +29,9 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
     @Autowired
     private AiWorkbookMapper workbookMapper;
 
+    @Autowired
+    private WorkbookVersionService versionService;
+
     @Override
     public R<List<AiWorkbook>> list()
     {
@@ -39,6 +45,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public R<AiWorkbook> save(AiWorkbook workbook)
     {
         Long userId = getUserId();
@@ -55,6 +62,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
         String username = SecurityUtils.getUsername();
         workbook.setUserId(userId);
         workbook.setName(workbook.getName().trim());
+        workbook.setContentHash(ContentHashUtils.sha256(workbook.getContent()));
 
         if (workbook.getWorkbookId() == null)
         {
@@ -70,6 +78,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
             workbook.setCreateBy(username);
             workbook.setCreateTime(new Date());
             workbookMapper.insertWorkbook(workbook);
+            versionService.initializeWorkbook(workbook, userId, username);
         }
         else
         {
@@ -79,6 +88,10 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
             {
                 return R.fail("文档不存在或无权访问");
             }
+            if (workbook.getVersion() == null)
+            {
+                return R.fail(409, "缺少文档版本，请重新打开文档后再保存");
+            }
             // 校验同名文档（排除自身）
             if (workbookMapper.countByNameAndUserId(workbook.getName(), userId, workbook.getWorkbookId()) > 0)
             {
@@ -87,7 +100,11 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
             workbook.setType(workbook.getType() == null || workbook.getType().trim().isEmpty()
                     ? exist.getType() : workbook.getType());
             workbook.setUpdateBy(username);
-            workbookMapper.updateWorkbook(workbook);
+            int updated = workbookMapper.updateWorkbook(workbook);
+            if (updated == 0)
+            {
+                return R.fail(409, "文档已在其他页面更新，当前内容未覆盖服务器版本");
+            }
         }
 
         // 回读一次，确保返回完整信息

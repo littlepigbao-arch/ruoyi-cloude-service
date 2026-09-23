@@ -14,11 +14,16 @@ CREATE TABLE ai_workbook (
   name           VARCHAR(255) NOT NULL COMMENT '文档名称',
   doc_type       VARCHAR(16)  DEFAULT 'created' COMMENT '类型(created新建/imported导入)',
   content        LONGTEXT     COMMENT '表格快照JSON',
+  content_hash   CHAR(64)     DEFAULT NULL COMMENT '当前表格快照SHA-256',
+  version        BIGINT       NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+  current_branch_id BIGINT    DEFAULT NULL COMMENT '当前分支ID',
+  head_commit_id CHAR(36)     DEFAULT NULL COMMENT '当前分支HEAD提交',
   user_id        BIGINT       NOT NULL COMMENT '用户ID',
   create_by      VARCHAR(64)  DEFAULT '' COMMENT '创建者',
   create_time    DATETIME     DEFAULT NULL COMMENT '创建时间',
   update_by      VARCHAR(64)  DEFAULT '' COMMENT '更新者',
   update_time    DATETIME     DEFAULT NULL COMMENT '更新时间',
   PRIMARY KEY (workbook_id),
+  UNIQUE KEY uk_workbook_user_name (user_id, name),
   KEY idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 智能报表文档表';

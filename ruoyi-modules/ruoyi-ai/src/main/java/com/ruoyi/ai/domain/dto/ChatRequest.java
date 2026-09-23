@@ -16,11 +16,11 @@ public class ChatRequest
     /** 会话 ID，首轮可由后端生成并回传 */
     private String conversationId;
 
-    /** 近几轮对话历史（role: user/assistant） */
+    /** 兼容旧客户端；模型历史只从服务端数据库读取，此字段不参与提示词 */
     private List<HistoryItem> history;
 
-    /** 当前表格状态快照，见 SheetContext */
-    private SheetContext context;
+    /** 当前工作簿的多 Sheet 摘要 */
+    private WorkbookContext context;
 
     /** 客户端元信息 */
     private Map<String, Object> clientMeta;
@@ -34,8 +34,8 @@ public class ChatRequest
     public List<HistoryItem> getHistory() { return history; }
     public void setHistory(List<HistoryItem> history) { this.history = history; }
 
-    public SheetContext getContext() { return context; }
-    public void setContext(SheetContext context) { this.context = context; }
+    public WorkbookContext getContext() { return context; }
+    public void setContext(WorkbookContext context) { this.context = context; }
 
     public Map<String, Object> getClientMeta() { return clientMeta; }
     public void setClientMeta(Map<String, Object> clientMeta) { this.clientMeta = clientMeta; }

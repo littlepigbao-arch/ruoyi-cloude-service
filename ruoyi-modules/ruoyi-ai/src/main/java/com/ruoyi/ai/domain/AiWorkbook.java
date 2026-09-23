@@ -24,6 +24,15 @@ public class AiWorkbook
     /** 用户 ID */
     private Long userId;
 
+    /** 乐观锁版本；更新时客户端必须回传 */
+    private Long version;
+
+    /** 当前完整工作簿内容 SHA-256 */
+    private String contentHash;
+
+    private Long currentBranchId;
+    private String headCommitId;
+
     private String createBy;
     private Date createTime;
     private String updateBy;
@@ -43,6 +52,18 @@ public class AiWorkbook
 
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
+
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
+
+    public String getContentHash() { return contentHash; }
+    public void setContentHash(String contentHash) { this.contentHash = contentHash; }
+
+    public Long getCurrentBranchId() { return currentBranchId; }
+    public void setCurrentBranchId(Long currentBranchId) { this.currentBranchId = currentBranchId; }
+
+    public String getHeadCommitId() { return headCommitId; }
+    public void setHeadCommitId(String headCommitId) { this.headCommitId = headCommitId; }
 
     public String getCreateBy() { return createBy; }
     public void setCreateBy(String createBy) { this.createBy = createBy; }

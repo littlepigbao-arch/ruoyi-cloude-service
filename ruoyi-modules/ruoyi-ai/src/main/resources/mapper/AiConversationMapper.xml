@@ -5,6 +5,7 @@
     <resultMap type="com.ruoyi.ai.domain.AiConversation" id="AiConversationResult">
         <id     property="conversationId"   column="conversation_id"/>
         <result property="userId"           column="user_id"/>
+        <result property="workbookId"       column="workbook_id"/>
         <result property="workbookName"     column="workbook_name"/>
         <result property="sheetName"        column="sheet_name"/>
         <result property="status"           column="status"/>
@@ -16,19 +17,19 @@
     </resultMap>
 
     <sql id="insertColumn">
-        conversation_id, user_id, workbook_name, sheet_name, status, create_by, create_time, remark
+        conversation_id, user_id, workbook_id, workbook_name, sheet_name, status, create_by, create_time, remark
     </sql>
 
     <insert id="insertConversation" parameterType="com.ruoyi.ai.domain.AiConversation">
         insert into ai_conversation (<include refid="insertColumn"/>)
         values (
-            #{conversationId}, #{userId}, #{workbookName}, #{sheetName},
+            #{conversationId}, #{userId}, #{workbookId}, #{workbookName}, #{sheetName},
             #{status}, #{createBy}, sysdate(), #{remark}
         )
     </insert>
 
     <select id="selectByConvId" parameterType="String" resultMap="AiConversationResult">
-        select conversation_id, user_id, workbook_name, sheet_name, status,
+        select conversation_id, user_id, workbook_id, workbook_name, sheet_name, status,
                create_by, create_time, update_by, update_time, remark
         from ai_conversation
         where conversation_id = #{conversationId}
