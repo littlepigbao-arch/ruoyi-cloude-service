@@ -32,6 +32,9 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
     @Autowired
     private WorkbookVersionService versionService;
 
+    @Autowired
+    private com.ruoyi.ai.agent.AgentWriteGuard agentWriteGuard;
+
     @Override
     public R<List<AiWorkbook>> list()
     {
@@ -82,6 +85,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
         }
         else
         {
+            agentWriteGuard.manual(workbook.getWorkbookId(), userId);
             // 更新：需校验归属，防止越权更新他人文档
             AiWorkbook exist = workbookMapper.selectById(workbook.getWorkbookId(), userId);
             if (exist == null)
@@ -137,6 +141,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public R<Void> remove(Long workbookId)
     {
         Long userId = getUserId();
@@ -148,6 +153,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
         {
             return R.fail("文档 ID 不能为空");
         }
+        agentWriteGuard.manual(workbookId, userId);
         int rows = workbookMapper.deleteById(workbookId, userId);
         if (rows == 0)
         {
@@ -157,6 +163,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public R<AiWorkbook> rename(AiWorkbook workbook)
     {
         Long userId = getUserId();
@@ -174,6 +181,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
         }
 
         String name = workbook.getName().trim();
+        agentWriteGuard.manual(workbook.getWorkbookId(), userId);
 
         AiWorkbook exist = workbookMapper.selectById(workbook.getWorkbookId(), userId);
         if (exist == null)

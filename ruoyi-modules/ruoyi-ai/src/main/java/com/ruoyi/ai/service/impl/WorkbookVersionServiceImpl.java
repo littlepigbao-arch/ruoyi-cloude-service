@@ -34,6 +34,9 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     private WorkbookVersionMapper versionMapper;
 
     @Autowired
+    private com.ruoyi.ai.agent.AgentWriteGuard agentWriteGuard;
+
+    @Autowired
     private AiWorkbookMapper workbookMapper;
 
     @Override
@@ -74,13 +77,17 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         if (branch == null) return R.fail("版本分支尚未初始化");
         Long branchId = longValue(branch.get("branchId"));
         Map<String, Object> result = new HashMap<>(branch);
-        Map<String, Object> workingState = versionMapper.selectWorkingState(workbookId, branchId, auth.userId);
+        Map<String, Object> workingState = versionMapper.selectWorkingStateForUpdate(workbookId, branchId, auth.userId);
         if (workingState != null && workingState.get("content") != null &&
                 !ContentHashUtils.sha256(stringValue(workingState.get("content"))).equals(workingState.get("contentHash")))
             return R.fail(422, "工作草稿完整性校验失败");
         result.put("workingState", workingState);
         result.put("contentHash", auth.workbook.getContentHash());
         result.put("workbookVersion", auth.workbook.getVersion());
+        String loadedContent = workingState == null ? auth.workbook.getContent() : stringValue(workingState.get("content"));
+        result.put("content", loadedContent);
+        result.put("loadedRevision", ContentHashUtils.sha256(loadedContent));
+        result.put("workbookId", workbookId);
         return R.ok(result);
     }
 
@@ -90,9 +97,24 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     {
         Auth auth = authWorkbook(workbookId);
         if (auth.error != null) return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId, auth.userId);
         if (request == null || request.getContent() == null) return R.fail("工作草稿内容不能为空");
         Map<String, Object> branch = resolveBranch(workbookId, request.getBranchId(), auth.userId);
         if (branch == null) return R.fail("分支不存在或无权访问");
+        branch = versionMapper.selectBranchForUpdate(workbookId, longValue(branch.get("branchId")), auth.userId);
+        if (branch == null) return R.fail("分支不存在或无权访问");
+        Map<String, Object> previousDraft = versionMapper.selectWorkingStateForUpdate(workbookId, longValue(branch.get("branchId")), auth.userId);
+        Long draftVersion = previousDraft == null ? -1L : longValue(previousDraft.get("version"));
+        if (!draftVersion.equals(request.getExpectedDraftVersion())) return R.fail(409, "草稿版本已变化，请重新打开文档后再保存");
+        String loadedContent = previousDraft == null ? auth.workbook.getContent() : stringValue(previousDraft.get("content"));
+        String loadedRevision = ContentHashUtils.sha256(loadedContent);
+        if (previousDraft == null && request.getLoadedRevision() == null)
+            return R.fail(409, "首次草稿保存缺少页面加载版本，请保留编辑并升级客户端");
+        // Older clients with an explicit draft version remain safe. A missing
+        // version is never replaced by a freshly read server version.
+        if (request.getLoadedRevision() != null && !loadedRevision.equals(request.getLoadedRevision()))
+            return R.fail(409, "页面加载内容已变化，请保留本地编辑并重新核实");
+        if (!longValue(branch.get("version")).equals(request.getBaseVersion())) return R.fail(409, "分支版本已变化");
         if (!equalsNullable(stringValue(branch.get("headCommitId")), request.getBaseCommitId()))
         {
             return R.fail(409, "草稿基线已变化，请重新比较后保存");
@@ -106,15 +128,26 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         state.put("executedChangesJson", json(request.getExecutedChanges(), "[]"));
         state.put("content", request.getContent().getBytes(StandardCharsets.UTF_8));
         state.put("contentHash", ContentHashUtils.sha256(request.getContent()));
-        versionMapper.upsertWorkingState(state);
-        return R.ok(versionMapper.selectWorkingState(workbookId, longValue(branch.get("branchId")), auth.userId));
+        state.put("expectedDraftVersion", request.getExpectedDraftVersion());
+        state.put("expectedContentHash", previousDraft == null ? loadedRevision : previousDraft.get("contentHash"));
+        try {
+            int saved = previousDraft == null ? versionMapper.insertWorkingState(state) : versionMapper.updateWorkingStateCas(state);
+            if (saved != 1) return R.fail(409, "草稿并发冲突，请保留本地编辑");
+        } catch (org.springframework.dao.DuplicateKeyException conflict) {
+            return R.fail(409, "草稿已被另一页面创建，请保留本地编辑");
+        }
+        Map<String, Object> saved = versionMapper.selectWorkingStateForUpdate(workbookId, longValue(branch.get("branchId")), auth.userId);
+        saved.put("loadedRevision", state.get("contentHash"));
+        return R.ok(saved);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public R<Void> deleteWorkingState(Long workbookId, Long branchId)
     {
         Auth auth = authWorkbook(workbookId);
         if (auth.error != null) return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId, auth.userId);
         Map<String, Object> branch = resolveBranch(workbookId, branchId, auth.userId);
         if (branch == null) return R.fail("分支不存在或无权访问");
         versionMapper.deleteWorkingState(workbookId, longValue(branch.get("branchId")), auth.userId);
@@ -127,6 +160,7 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     {
         Auth auth = authWorkbook(workbookId);
         if (auth.error != null) return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId, auth.userId);
         String validationError = validateCommitRequest(request, false);
         if (validationError != null) return R.fail(validationError);
         Map<String, Object> prior = versionMapper.selectCommitByOperation(workbookId, request.getOperationId());
@@ -228,6 +262,7 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     {
         Auth auth = authWorkbook(workbookId);
         if (auth.error != null) return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId, auth.userId);
         if (request == null || request.getOperationId() == null || request.getOperationId().trim().isEmpty())
             return R.fail("operationId 不能为空");
         String name = request.getBranchName() == null ? "" : request.getBranchName().trim();
@@ -255,6 +290,7 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     {
         Auth auth = authWorkbook(workbookId);
         if (auth.error != null) return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId, auth.userId);
         if (request == null || request.getOperationId() == null || request.getOperationId().trim().isEmpty())
             return R.fail("operationId 不能为空");
         if (request.getCurrentBranchId() != null && !request.getCurrentBranchId().equals(auth.workbook.getCurrentBranchId()))
@@ -296,6 +332,7 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     {
         Auth auth = authWorkbook(workbookId);
         if (auth.error != null) return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId, auth.userId);
         if (request == null || request.getOperationId() == null || request.getOperationId().trim().isEmpty())
             return R.fail("operationId 不能为空");
         Map<String, Object> draft = resolveBranch(workbookId, branchId, auth.userId);
@@ -408,6 +445,8 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
                 commitId, content, afterHash, username);
         versionMapper.deleteWorkingState(workbook.getWorkbookId(), longValue(branch.get("branchId")), userId);
         commit.put("created", true);
+        commit.put("branchVersion", expectedVersion + 1);
+        commit.put("workbookVersion", workbook.getVersion() == null ? 1L : workbook.getVersion() + 1);
         return commit;
     }
 
@@ -433,7 +472,8 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         try
         {
             Long userId = SecurityUtils.getUserId();
-            AiWorkbook workbook = workbookMapper.selectById(workbookId, userId);
+            // Current read before any consistent reads: avoids stale RR views.
+            AiWorkbook workbook = workbookMapper.selectByIdForUpdate(workbookId, userId);
             if (workbook == null) return new Auth("工作簿不存在或无权访问");
             return new Auth(userId, SecurityUtils.getUsername(), workbook);
         }

@@ -16,6 +16,12 @@
     </description>
 
     <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>3.8.2</version>
+            <scope>test</scope>
+        </dependency>
 
         <!-- SpringCloud Alibaba Nacos -->
         <dependency>

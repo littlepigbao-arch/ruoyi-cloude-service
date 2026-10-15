@@ -59,6 +59,12 @@
           and user_id = #{userId}
     </select>
 
+    <select id="selectByIdForUpdate" resultMap="AiWorkbookResult">
+        select workbook_id, name, doc_type, content, user_id, version, content_hash,
+               current_branch_id, head_commit_id, create_by, create_time, update_by, update_time
+        from ai_workbook where workbook_id=#{workbookId} and user_id=#{userId} for update
+    </select>
+
     <select id="countByIdAndUserId" resultType="int">
         select count(*) from ai_workbook
         where workbook_id = #{workbookId} and user_id = #{userId}

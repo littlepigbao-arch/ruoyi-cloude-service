@@ -6,6 +6,13 @@ public class WorkingStateRequest
     private Long branchId;
     private String baseCommitId;
     private Long baseVersion;
+    private Long expectedDraftVersion;
+    private String loadedRevision;
+
+    public Long getExpectedDraftVersion() { return expectedDraftVersion; }
+    public void setExpectedDraftVersion(Long version) { this.expectedDraftVersion = version; }
+    public String getLoadedRevision() { return loadedRevision; }
+    public void setLoadedRevision(String revision) { this.loadedRevision = revision; }
     private String content;
     private Object plannedActions;
     private Object executedChanges;

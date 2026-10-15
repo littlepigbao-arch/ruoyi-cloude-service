@@ -92,6 +92,38 @@
         where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId}
           and version=#{expectedVersion} and status='active'
     </update>
+    <select id="selectBranchForUpdate" resultType="java.util.HashMap">
+        select branch_id branchId, workbook_id workbookId, branch_name branchName,
+               head_commit_id headCommitId, owner_user_id ownerUserId, visibility, status, version
+        from ai_workbook_branch
+        where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId} and status='active'
+        for update
+    </select>
+    <select id="selectWorkingStateForUpdate" resultType="java.util.HashMap">
+        select workbook_id workbookId, branch_id branchId, owner_user_id ownerUserId,
+               base_commit_id baseCommitId, draft_actions_json draftActionsJson,
+               executed_changes_json executedChangesJson,
+               cast(draft_snapshot as char character set utf8mb4) content,
+               content_hash contentHash, version, update_time updateTime
+        from ai_workbook_working_state
+        where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId}
+        for update
+    </select>
+    <insert id="insertWorkingState" parameterType="map">
+        insert into ai_workbook_working_state
+          (workbook_id, branch_id, owner_user_id, base_commit_id, draft_actions_json,
+           executed_changes_json, draft_snapshot, content_hash, version, update_time)
+        values (#{workbookId}, #{branchId}, #{ownerUserId}, #{baseCommitId}, #{draftActionsJson},
+                #{executedChangesJson}, #{content}, #{contentHash}, 0, now(3))
+    </insert>
+    <update id="updateWorkingStateCas" parameterType="map">
+        update ai_workbook_working_state
+        set base_commit_id=#{baseCommitId}, draft_actions_json=#{draftActionsJson},
+            executed_changes_json=#{executedChangesJson}, draft_snapshot=#{content},
+            content_hash=#{contentHash}, version=version+1, update_time=now(3)
+        where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{ownerUserId}
+          and version=#{expectedDraftVersion} and content_hash=#{expectedContentHash}
+    </update>
     <insert id="upsertWorkingState" parameterType="map">
         insert into ai_workbook_working_state
           (workbook_id, branch_id, owner_user_id, base_commit_id, draft_actions_json,

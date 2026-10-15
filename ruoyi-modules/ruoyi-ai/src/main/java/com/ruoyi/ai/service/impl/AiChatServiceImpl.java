@@ -179,7 +179,8 @@ public class AiChatServiceImpl implements AiChatService
         }
 
         chatResp.setConversationId(conversationId);
-        normalizeActionTargets(chatResp, req);
+        try { normalizeActionTargets(chatResp, req); }
+        catch (IllegalArgumentException invalidTarget) { return R.fail(422, invalidTarget.getMessage()); }
 
         // 7. 持久化助手消息（含 actions JSON 字符串）
         AiMessage assistantMsg = new AiMessage();
@@ -213,19 +214,10 @@ public class AiChatServiceImpl implements AiChatService
      */
     private void normalizeActionTargets(ChatResponse response, ChatRequest request)
     {
-        if (response.getActions() == null || request.getContext() == null) return;
+        if (response.getActions() == null) return;
         for (Action action : response.getActions())
         {
-            if (action == null) continue;
-            if (action.getTarget() == null)
-            {
-                Action.Target target = new Action.Target();
-                target.setSheetId(action.getSheetId() == null ? request.getContext().getActiveSheetId() : action.getSheetId());
-                target.setSheetName(action.getSheetName() == null ? request.getContext().getActiveSheetName() : action.getSheetName());
-                target.setRange(action.getRange());
-                action.setTarget(target);
-            }
-            action.setSchemaVersion("2.0");
+            com.ruoyi.ai.service.ActionTargetValidator.normalize(action, request.getContext());
         }
     }
 

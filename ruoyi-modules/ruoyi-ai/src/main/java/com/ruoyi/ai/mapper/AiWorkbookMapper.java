@@ -31,6 +31,7 @@ public interface AiWorkbookMapper
      * 按 ID + 用户查询单条文档（含 content）
      */
     AiWorkbook selectById(@Param("workbookId") Long workbookId, @Param("userId") Long userId);
+    AiWorkbook selectByIdForUpdate(@Param("workbookId") Long workbookId, @Param("userId") Long userId);
 
     /** 轻量鉴权检查，不读取完整工作簿快照 */
     int countByIdAndUserId(@Param("workbookId") Long workbookId, @Param("userId") Long userId);

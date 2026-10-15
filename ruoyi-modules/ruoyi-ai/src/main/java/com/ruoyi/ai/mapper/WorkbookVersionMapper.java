@@ -22,6 +22,10 @@ public interface WorkbookVersionMapper
                          @Param("userId") Long userId, @Param("expectedVersion") Long expectedVersion,
                          @Param("headCommitId") String headCommitId);
     int upsertWorkingState(Map<String, Object> state);
+    Map<String, Object> selectBranchForUpdate(@Param("workbookId") Long workbookId, @Param("branchId") Long branchId, @Param("userId") Long userId);
+    Map<String, Object> selectWorkingStateForUpdate(@Param("workbookId") Long workbookId, @Param("branchId") Long branchId, @Param("userId") Long userId);
+    int insertWorkingState(Map<String, Object> state);
+    int updateWorkingStateCas(Map<String, Object> state);
     Map<String, Object> selectWorkingState(@Param("workbookId") Long workbookId, @Param("branchId") Long branchId, @Param("userId") Long userId);
     int deleteWorkingState(@Param("workbookId") Long workbookId, @Param("branchId") Long branchId, @Param("userId") Long userId);
 }
