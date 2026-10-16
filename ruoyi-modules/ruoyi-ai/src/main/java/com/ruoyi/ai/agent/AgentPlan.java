@@ -76,7 +76,7 @@ public final class AgentPlan {
         else {
             require(args.path("actions").isArray()&&args.path("actions").size()>0,"RESULT_UNKNOWN: 缺少可验证的写动作");
             for(JsonNode action:args.path("actions")) {
-                String type=text(action,"type");require(Arrays.asList("setValues","setFormula").contains(type),"RESULT_UNKNOWN: 此动作尚无可信业务验证规则");
+                String type=text(action,"type");require(Arrays.asList("setCell","setValues","setFormula").contains(type),"RESULT_UNKNOWN: 此动作尚无可信业务验证规则");
                 boolean formula="setFormula".equals(type)||containsFormula(action.path("values"));
                 verifyTarget(action,verify,formula);
             }
@@ -84,8 +84,9 @@ public final class AgentPlan {
     }
     private static boolean containsFormula(JsonNode n) { if(n.isTextual())return n.asText().startsWith("=");if(n.isContainerNode())for(JsonNode child:n)if(containsFormula(child))return true;return false; }
     private static void verifyTarget(JsonNode write,JsonNode verify,boolean formula) {
-        require(text(write,"sheetId").equals(text(verify,"sheetId")),"RESULT_UNKNOWN: 验证 Sheet 与写入目标不一致");
-        int[] w=AgentTools.range(text(write,"range")),v=AgentTools.range(text(verify,"range"));
+        JsonNode target=write.has("target")?write.path("target"):write;
+        require(text(target,"sheetId").equals(text(verify,"sheetId")),"RESULT_UNKNOWN: 验证 Sheet 与写入目标不一致");
+        int[] w=AgentTools.range(text(target,"range")),v=AgentTools.range(text(verify,"range"));
         require(v[0]<=w[0]&&v[1]<=w[1]&&v[2]>=w[2]&&v[3]>=w[3],"RESULT_UNKNOWN: 验证范围未覆盖写入目标");
         require(!formula||"product".equals(verify.path("kind").asText()),"FORMULA_UNVERIFIED: 公式写入不能仅验证非空");
     }

@@ -33,6 +33,11 @@ public class AgentRunService {
     private final WorkbookVersionMapper versions;
     private final LlmClient llm;
     private final TransactionTemplate tx;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private ControlledWriteService controlled;
+    public boolean controlledWritesEnabled(){return controlled!=null&&controlled.enabled();}
+    public ObjectNode createControlled(ObjectNode request,long user){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.create(request,user);}
+    public ObjectNode claimControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.claim(id,user,request);}
+    public ObjectNode receiptControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.receipt(id,user,request,this::completeStep);}
     @Value("${ai.agent.replanning-enabled:true}") private boolean replanning;
     @Value("${ai.agent.business-tools-enabled:true}") private boolean businessTools;
     @Value("${ai.agent.max-context-chars:24000}") private int contextLimit;
@@ -91,6 +96,12 @@ public class AgentRunService {
                 .put("fencingToken",fence).put("startedAt",now).put("deadline",now+timeoutMs).put("modelCalls",0).put("tokens",0).put("replans",0).put("planVersion",0)
                 .put("allowOverwrite",req.path("allowOverwrite").asBoolean()).put("persistenceStatus","SAVED");
             r.set("outputs",obj());r.set("completedSteps",arr());r.set("constraints",arr());r.set("initialSnapshot",snapshot);r.set("expectedSnapshot",snapshot);
+            if(controlledWritesEnabled()){
+                WriteManifest.checkScopes(req.path("writeScopes"),snapshot);require(req.path("expectedDraftVersion").isIntegralNumber()&&req.path("expectedBranchVersion").isIntegralNumber()&&req.path("loadedRevision").isTextual(),"WRITE_VERSION_REQUIRED");
+                Map<String,Object> draft=versions.selectWorkingStateForUpdate(workbook,branch,user);String content=draft==null?w.getContent():String.valueOf(draft.get("content"));
+                require(req.path("expectedDraftVersion").asLong()==(draft==null?-1:((Number)draft.get("version")).longValue())&&req.path("expectedBranchVersion").asLong()==((Number)b.get("version")).longValue()&&req.path("loadedRevision").asText().equals(ContentHashUtils.sha256(content)),"WRITE_VERSION_CONFLICT");
+                r.set("writeScopes",req.path("writeScopes"));r.set("expectedDraftVersion",req.path("expectedDraftVersion"));r.set("expectedBranchVersion",req.path("expectedBranchVersion"));r.set("loadedRevision",req.path("loadedRevision"));r.put("activeSheetId",text(req,"activeSheetId"));
+            }
             store.db.update("insert into ai_agent_run values (?,?,?,?,?,?,?, ?,0,now(3),now(3))",id,user,workbook,branch,requestId,hash(req),"QUEUED",r.toString());
             store.event(r,"CREATED","已取得工作区写租约，开始读取结构与制定计划");store.save(r);return view(r);
         });
@@ -131,7 +142,7 @@ public class AgentRunService {
         Map<String,Object> state=new HashMap<>();state.put("workbookId",w);state.put("branchId",b);state.put("ownerUserId",u);state.put("baseCommitId",branch.get("headCommitId"));state.put("draftActionsJson",actions.toString());state.put("executedChangesJson",changes.toString());state.put("content",snapshot.toString().getBytes(StandardCharsets.UTF_8));state.put("contentHash",ContentHashUtils.sha256(snapshot.toString()));versions.upsertWorkingState(state);
         r.put("revision",hash(snapshot));r.set("expectedSnapshot",snapshot);r.put("persistenceStatus","SAVED");store.event(r,"SAVED","步骤已回读核对并保存工作草稿，未创建正式Commit");
     }
-    public ObjectNode cancel(String id,long user){return mutate(id,user,r->{if(terminal(r))return view(r);r.put("status","CANCELLING").put("cancelRequested",true);JsonNode c=r.path("call");if(Arrays.asList("CLAIMED","UNKNOWN").contains(c.path("status").asText())){store.event(r,"CANCELLING","等待在途写入核实；请重新加载服务器草稿后确认停止");}else finish(r,"CANCELLED","任务已停止，已保存的步骤仍然保留");return view(r);});}
+    public ObjectNode cancel(String id,long user){return mutate(id,user,r->{if(terminal(r))return view(r);r.put("status","CANCELLING").put("cancelRequested",true);JsonNode c=r.path("call");if(Arrays.asList("CLAIMED","UNKNOWN").contains(c.path("status").asText())){store.event(r,"CANCELLING","等待在途写入核实；请重新加载服务器草稿后确认停止");}else{if(c.path("transportVersion").asInt()==2&&"PENDING".equals(c.path("status").asText())){((ObjectNode)c).put("status","CANCELLED");store.call(r,(ObjectNode)c);}finish(r,"CANCELLED","任务已停止，已保存的步骤仍然保留");}return view(r);});}
     public ObjectNode resume(String id,long user,ObjectNode req){return mutate(id,user,r->{require(Arrays.asList("PAUSED","CANCELLING","WAITING_USER").contains(r.path("status").asText()),"当前状态不能恢复");
         JsonNode trusted=current(r.path("workbookId").asLong(),r.path("branchId").asLong(),user);
         require(req.path("reloadedServerDraft").asBoolean()&&hash(trusted).equals(text(req,"expectedRevision")),"必须先重新加载服务器草稿，核实在途结果");
@@ -165,6 +176,11 @@ public class AgentRunService {
     @Scheduled(fixedDelay=1500)
     public void tick(){if(!enabled())return;try{List<Map<String,Object>> runs=store.db.queryForList("select run_id,user_id from ai_agent_run where status in ('QUEUED','PREPARING','PLANNING','EXECUTING','REPLANNING','VERIFYING','CANCELLING') order by updated_at limit 20");for(Map<String,Object> row:runs){String id=String.valueOf(row.get("run_id"));long user=((Number)row.get("user_id")).longValue();try{ObjectNode job=mutate(id,user,this::advance);if(job!=null)plan(job,user);}catch(Exception e){LOG.warn("Agent run {} paused: {}",id,e.getMessage());try{mutate(id,user,r->{if(!terminal(r))pause(r,e.getMessage());return null;});}catch(Exception ignored){LOG.warn("Agent state unavailable: {}",id);}}}}catch(Exception e){LOG.warn("Agent scheduler unavailable; check migration: {}",e.getMessage());}}
     private ObjectNode advance(ObjectNode r){if(terminal(r))return null;
+        if("CONTROLLED_WRITE".equals(r.path("kind").asText()))return null;
+        if(r.path("call").path("transportVersion").asInt()==2){
+            String state=r.path("call").path("status").asText();
+            try{lease(r);}catch(Exception expired){if("CLAIMED".equals(state)){((ObjectNode)r.path("call")).put("status","UNKNOWN");store.call(r,(ObjectNode)r.path("call"));}pause(r,"RESULT_UNKNOWN: 受控写入租约待核实，不重新派发");}return null;
+        }
         try{lease(r);}catch(Exception e){if(r.has("call")&&"CLAIMED".equals(r.path("call").path("status").asText())){((ObjectNode)r.get("call")).put("status","UNKNOWN");store.call(r,(ObjectNode)r.get("call"));}pause(r,"浏览器断线或租约过期；重新加载草稿后恢复，不能重放未知写入");return null;}
         require(System.currentTimeMillis()<r.path("deadline").asLong(),"任务时间预算已耗尽");sameRevision(r);
         String status=r.path("status").asText();
@@ -182,8 +198,11 @@ public class AgentRunService {
         if(index>=steps.size()){require("SAVED".equals(r.path("persistenceStatus").asText()),"最终草稿尚未保存");for(JsonNode s:steps)require("SUCCEEDED".equals(s.path("status").asText()),"存在未验证步骤");r.put("status","VERIFYING");store.event(r,"VERIFYING","所有有效步骤验证通过，正在检查最终保存版本");sameRevision(r);finish(r,"COMPLETED","计划步骤及整体验收已通过，最终工作草稿已保存");return null;}
         ObjectNode step=(ObjectNode)steps.get(index);JsonNode args=AgentPlan.resolve(step.path("inputBindings"),(ObjectNode)r.path("outputs"));String tool=step.path("tool").asText();step.put("status","RUNNING");
         if(!businessTools)require(!Arrays.asList("build_dataset","join_tables","aggregate_table","derive_columns").contains(tool),"业务计算工具未启用");
-        ObjectNode call=obj().put("callId",UUID.randomUUID().toString()).put("stepId",step.path("stepId").asText()).put("tool",tool).put("argsHash",hash(args)).put("status","PENDING");call.set("args",args);store.call(r,call);
-        try{if(AgentPlan.WRITES.contains(tool)){call.put("status","BLOCKED");store.call(r,call);step.put("status","BLOCKED");pause(r,"SNAPSHOT_WRITE_BLOCKED: A1 阻断完整 Snapshot 智能体写入，已保存结果保持不变");}
+        ObjectNode call=obj().put("callId",UUID.randomUUID().toString()).put("stepId",step.path("stepId").asText()).put("tool",tool).put("argsHash",hash(args)).put("status","PENDING");call.set("args",args);if(!("apply_actions".equals(tool)&&controlledWritesEnabled()))store.call(r,call);
+        try{if("apply_actions".equals(tool)&&controlledWritesEnabled()){
+                // No legacy proposal/receipt path is opened. The same controlled service also serves explicit action requests.
+                controlled.prepareLocked(r,args.path("actions"),text(args,"overwrite"));
+            }else if(AgentPlan.WRITES.contains(tool)){call.put("status","BLOCKED");store.call(r,call);step.put("status","BLOCKED");pause(r,"SNAPSHOT_WRITE_BLOCKED: A1 阻断完整 Snapshot 智能体写入，已保存结果保持不变");}
             else{ObjectNode out=tools.execute(r,tool,args,r.path("expectedSnapshot"));call.put("status","SUCCEEDED");call.set("result",out);store.call(r,call);completeStep(r,out);}
         }catch(IllegalArgumentException e){call.put("status","FAILED").put("error",e.getMessage());store.call(r,call);step.put("status","FAILED");r.put("lastError",e.getMessage());r.put("status",replanning&&r.path("replans").asInt()<3?"REPLANNING":"WAITING_USER");r.put("question",e.getMessage()+"。请补充字段或业务口径后继续。");store.event(r,"STEP_FAILED",e.getMessage());}
         saveStep(r,step);return null;
@@ -193,7 +212,8 @@ public class AgentRunService {
     private void plan(ObjectNode job,long user){String id=job.path("runId").asText();try{
         ObjectNode context=obj().put("goal",job.path("goal").asText()).put("allowOverwrite",job.path("allowOverwrite").asBoolean());context.set("constraints",job.path("constraints"));context.set("catalog",AgentTools.catalog(job.path("expectedSnapshot")));context.set("completedSteps",job.path("completedSteps"));context.put("lastError",job.path("lastError").asText());
         require(context.toString().length()<=contextLimit,"上下文超过预算，请缩小目标或开始新会话；完整历史已保留");
-        List<Map<String,String>> messages=new ArrayList<>();Map<String,String> system=new HashMap<>();system.put("role","system");system.put("content",AgentPlan.CONTRACT+"重规划只生成剩余工作，不得重复已成功写入；已完成记录不可删除。当前计划必须独立可执行，需要的旧数据重新提取。");messages.add(system);Map<String,String> userMessage=new HashMap<>();userMessage.put("role","user");userMessage.put("content",context.toString());messages.add(userMessage);
+        context.set("writeScopes",job.path("writeScopes"));
+        List<Map<String,String>> messages=new ArrayList<>();Map<String,String> system=new HashMap<>();system.put("role","system");system.put("content",AgentPlan.CONTRACT+"重规划只生成剩余工作，不得重复已成功写入；已完成记录不可删除。当前计划必须独立可执行，需要的旧数据重新提取。"+(controlledWritesEnabled()?"B1仅允许apply_actions中的setCell/setValues标量值；不得生成公式、样式、清空或write_result。目标必须在writeScopes之内，每次最多1000格。":""));messages.add(system);Map<String,String> userMessage=new HashMap<>();userMessage.put("role","user");userMessage.put("content",context.toString());messages.add(userMessage);
         LlmResponse response=llm.chat(messages);JsonNode parsed=parse(response.getContent());
         mutate(id,user,r->{if(!"PLANNING".equals(r.path("status").asText())||!r.path("planningToken").equals(job.path("planningToken")))return null;
             r.put("tokens",r.path("tokens").asInt()+response.getTotalTokens());require(r.path("tokens").asInt()<=tokenLimit,"token预算耗尽");

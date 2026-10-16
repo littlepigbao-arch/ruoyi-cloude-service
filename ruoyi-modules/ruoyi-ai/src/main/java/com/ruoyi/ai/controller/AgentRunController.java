@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.*;
 public class AgentRunController {
     private final AgentRunService service;
     public AgentRunController(AgentRunService service){this.service=service;}
-    @GetMapping("/capabilities") public R<?> capabilities(){java.util.Map<String,Object> c=new java.util.HashMap<>();c.put("enabled",service.enabled());c.put("recoveryAvailable",service.recoveryAvailable());c.put("snapshotWritesEnabled",false);c.put("snapshotRiskStatus","BLOCKED_NOT_FIXED");return R.ok(c);}
+    @GetMapping("/capabilities") public R<?> capabilities(){java.util.Map<String,Object> c=new java.util.HashMap<>();c.put("enabled",service.enabled());c.put("recoveryAvailable",service.recoveryAvailable());c.put("snapshotWritesEnabled",false);c.put("snapshotRiskStatus","BLOCKED_NOT_FIXED");c.put("controlledWritesEnabled",service.controlledWritesEnabled());c.put("controlledActions",java.util.Arrays.asList("setCell","setValues"));c.put("controlledMaxCells",1000);return R.ok(c);}
+    @PostMapping("/controlled-writes") public R<?> controlledCreate(@RequestBody ObjectNode req){return R.ok(service.createControlled(req,SecurityUtils.getUserId()));}
+    @PostMapping("/runs/{id}/controlled-claims") public R<?> controlledClaim(@PathVariable String id,@RequestBody ObjectNode req){return R.ok(service.claimControlled(id,SecurityUtils.getUserId(),req));}
+    @PostMapping("/runs/{id}/controlled-results") public R<?> controlledResults(@PathVariable String id,@RequestBody ObjectNode req){return R.ok(service.receiptControlled(id,SecurityUtils.getUserId(),req));}
     @GetMapping("/workspace/{id}") public R<?> workspace(@PathVariable long id){return R.ok(service.workspace(id,SecurityUtils.getUserId()));}
     @PostMapping("/runs") public R<?> create(@RequestBody ObjectNode req){return R.ok(service.create(req,SecurityUtils.getUserId()));}
     @GetMapping("/runs/active") public R<?> active(@RequestParam long workbookId){return R.ok(service.active(workbookId,SecurityUtils.getUserId()));}

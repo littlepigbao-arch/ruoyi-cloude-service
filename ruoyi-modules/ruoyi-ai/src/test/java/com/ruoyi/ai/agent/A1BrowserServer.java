@@ -21,9 +21,11 @@ public class A1BrowserServer {
     private final Path staticRoot;
     private final long workbook;
     private String runId;
+    private ControlledWriteService controlled;
     private final String serverToken=System.getProperty("a1.serverToken","missing");
     private A1BrowserServer()throws Exception{
         f=new A1TestFixture();staticRoot=Paths.get(System.getProperty("a1.static")).toAbsolutePath().normalize();
+        if(Boolean.getBoolean("b1.controlled")){controlled=new ControlledWriteService(new AgentStore(f.db),f.guard,f.workbooks,f.versions,f.tx.getTransactionManager());A1TestFixture.inject(controlled,"enabled",true);A1TestFixture.inject(f.runs,"controlled",controlled);}
         workbook=f.seed("{\"id\":\"a1-browser\",\"name\":\"A1 isolated\",\"sheetOrder\":[\"orders\",\"arrivals\"],\"sheets\":{\"orders\":{\"id\":\"orders\",\"name\":\"Orders\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{\"0\":{\"0\":{\"v\":\"initial\",\"t\":1}}}},\"arrivals\":{\"id\":\"arrivals\",\"name\":\"Arrivals\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{}}}}");
     }
     private void send(HttpExchange x,Object value)throws Exception {byte[] bytes=json.writeValueAsBytes(value);x.getResponseHeaders().set("Content-Type","application/json;charset=utf-8");x.sendResponseHeaders(200,bytes.length);x.getResponseBody().write(bytes);x.close();}
@@ -36,12 +38,15 @@ public class A1BrowserServer {
             if(uri.equals("/test/fail")){f.tx.execute(tx->{ObjectNode run=new AgentStore(f.db).locked(runId);run.put("status","FAILED");new AgentStore(f.db).save(run);f.db.update("update ai_agent_lease set run_id=null,expires_at=0 where workbook_id=? and run_id=?",workbook,runId);return null;});send(x,obj().put("ok",true));return;}
             if(uri.equals("/test/complete")){completeRun();send(x,obj().put("ok",true));return;}
             if(uri.startsWith("/a1-api/")){String p=uri.substring("/a1-api".length());JsonNode req=("POST".equals(x.getRequestMethod())||"PUT".equals(x.getRequestMethod()))?json.readTree(x.getRequestBody()):obj();
-                if(p.equals("/ai/agent/capabilities")){send(x,R.ok(obj().put("enabled",false).put("recoveryAvailable",true).put("snapshotWritesEnabled",false)));return;}
+                if(p.equals("/ai/agent/capabilities")){send(x,R.ok(obj().put("enabled",false).put("recoveryAvailable",true).put("controlledWritesEnabled",controlled!=null).put("snapshotWritesEnabled",false)));return;}
+                if(p.equals("/ai/agent/controlled-writes")&&controlled!=null){ObjectNode run=controlled.create((ObjectNode)req,1);runId=run.path("runId").asText();send(x,R.ok(run));return;}
                 if(p.equals("/ai/workbook/list")){send(x,R.ok(f.workbooks.selectListByUserId(1L)));return;}
                 if(p.equals("/ai/agent/runs/active")){String q=x.getRequestURI().getQuery();long id=Long.parseLong(q.substring(q.indexOf('=')+1));send(x,R.ok(f.runs.active(id,1)));return;}
                 if(p.startsWith("/ai/agent/workspace/")){send(x,R.ok(f.runs.workspace(Long.parseLong(p.substring(p.lastIndexOf('/')+1)),1)));return;}
                 if(p.startsWith("/ai/agent/runs/")){String rest=p.substring("/ai/agent/runs/".length());String id=rest.split("/")[0];
-                    if(rest.endsWith("/events"))send(x,R.ok(f.runs.events(id,1,0)));
+                    if(rest.endsWith("/controlled-claims")&&controlled!=null)send(x,R.ok(controlled.claim(id,1,(ObjectNode)req)));
+                    else if(rest.endsWith("/controlled-results")&&controlled!=null)send(x,R.ok(f.runs.receiptControlled(id,1,(ObjectNode)req)));
+                    else if(rest.endsWith("/events"))send(x,R.ok(f.runs.events(id,1,0)));
                     else if(rest.endsWith("/cancel"))send(x,R.ok(f.runs.cancel(id,1)));
                     else if(rest.endsWith("/resume"))send(x,R.ok(f.runs.resume(id,1,(ObjectNode)req)));
                     else if(rest.endsWith("/lease-heartbeat"))send(x,R.ok(f.runs.heartbeat(id,1,(ObjectNode)req)));
