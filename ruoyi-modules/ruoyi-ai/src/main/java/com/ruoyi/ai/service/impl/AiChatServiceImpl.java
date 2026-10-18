@@ -60,6 +60,9 @@ public class AiChatServiceImpl implements AiChatService
     @Autowired
     private PromptBuilder promptBuilder;
 
+    @Autowired
+    private com.ruoyi.ai.agent.ControlledWriteService controlledWrites;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -181,12 +184,18 @@ public class AiChatServiceImpl implements AiChatService
         chatResp.setConversationId(conversationId);
         try { normalizeActionTargets(chatResp, req); }
         catch (IllegalArgumentException invalidTarget) { return R.fail(422, invalidTarget.getMessage()); }
+        String executionMode;
+        try {
+            executionMode = com.ruoyi.ai.agent.WriteManifest.checkChatTransport(
+                mapper.valueToTree(chatResp.getActions()==null?java.util.Collections.emptyList():chatResp.getActions()),
+                mapper.valueToTree(req.getClientMeta()), controlledWrites.enabled());
+        } catch (IllegalArgumentException unsupported) { return R.fail(409, unsupported.getMessage()); }
 
         // 7. 持久化助手消息（含 actions JSON 字符串）
         AiMessage assistantMsg = new AiMessage();
         assistantMsg.setConversationId(conversationId);
         assistantMsg.setRole("assistant");
-        assistantMsg.setContent(chatResp.getReply());
+        assistantMsg.setContent(("controlled-values".equals(executionMode) ? "[动作生成记录，未代表已执行或保存；实际结果以受控任务账本为准]\n" : "") + chatResp.getReply());
         try
         {
             assistantMsg.setActions(mapper.writeValueAsString(chatResp.getActions()));

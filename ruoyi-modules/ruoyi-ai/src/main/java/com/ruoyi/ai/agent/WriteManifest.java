@@ -10,7 +10,16 @@ import static com.ruoyi.ai.agent.AgentJson.*;
 /** B1: immutable, bounded value patches. This is not another cell execution engine. */
 public final class WriteManifest {
     public static final int MAX_WRITE_CELLS=1000;
+    public static final Set<String> VALUE_ACTIONS=Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList("setCell","setValues")));
+    public static final Set<String> READ_DISPLAY_ACTIONS=Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList("getRangeValue","getRangeFormulas","getMerges","getSelection","getFilter","createChart")));
     private WriteManifest() { }
+    /** Classify the whole group before execution; never run a supported subset of a mixed group. */
+    public static String classify(JsonNode actions){
+        require(actions.isArray()&&actions.size()<=30,"AI_CAPABILITY_BLOCKED: 动作组必须是最多30项的数组");boolean reads=false,writes=false;
+        for(JsonNode action:actions){String type=action.path("type").asText();require(action.isObject()&&(VALUE_ACTIONS.contains(type)||READ_DISPLAY_ACTIONS.contains(type)),"AI_CAPABILITY_BLOCKED: 此写动作尚未迁移至受控链路: "+type);writes|=VALUE_ACTIONS.contains(type);reads|=READ_DISPLAY_ACTIONS.contains(type);}
+        require(!(reads&&writes),"AI_CAPABILITY_BLOCKED: 读取展示与写入混合动作组暂不执行，请拆分请求");return writes?"controlled-values":"read-display";
+    }
+    public static String checkChatTransport(JsonNode actions,JsonNode clientMeta,boolean enabled){String mode=classify(actions);if("controlled-values".equals(mode)){require(enabled,"CONTROLLED_DISABLED: 受控写入入口未开启");require(clientMeta.path("controlledWriteTransport").isIntegralNumber()&&clientMeta.path("controlledWriteTransport").asInt()==2,"CONTROLLED_CLIENT_REQUIRED: 写动作需要受控客户端，不能直接本地执行后保存 Snapshot");}return mode;}
     public static String digest(JsonNode value) { return hash(sorted(value)); }
     private static JsonNode sorted(JsonNode value) {
         if(value.isObject()){ObjectNode out=obj();TreeSet<String> keys=new TreeSet<>();value.fieldNames().forEachRemaining(keys::add);for(String key:keys)out.set(key,sorted(value.get(key)));return out;}

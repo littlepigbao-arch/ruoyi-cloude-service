@@ -22,23 +22,32 @@ public class A1BrowserServer {
     private final long workbook;
     private String runId;
     private ControlledWriteService controlled;
+    private final boolean b2=Boolean.getBoolean("b2.controlled");
+    private JsonNode fixtureActions=arr();
+    private String seedSnapshot;
     private final String serverToken=System.getProperty("a1.serverToken","missing");
     private A1BrowserServer()throws Exception{
         f=new A1TestFixture();staticRoot=Paths.get(System.getProperty("a1.static")).toAbsolutePath().normalize();
-        if(Boolean.getBoolean("b1.controlled")){controlled=new ControlledWriteService(new AgentStore(f.db),f.guard,f.workbooks,f.versions,f.tx.getTransactionManager());A1TestFixture.inject(controlled,"enabled",true);A1TestFixture.inject(f.runs,"controlled",controlled);}
-        workbook=f.seed("{\"id\":\"a1-browser\",\"name\":\"A1 isolated\",\"sheetOrder\":[\"orders\",\"arrivals\"],\"sheets\":{\"orders\":{\"id\":\"orders\",\"name\":\"Orders\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{\"0\":{\"0\":{\"v\":\"initial\",\"t\":1}}}},\"arrivals\":{\"id\":\"arrivals\",\"name\":\"Arrivals\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{}}}}");
+        if(Boolean.getBoolean("b1.controlled")||b2){controlled=new ControlledWriteService(new AgentStore(f.db),f.guard,f.workbooks,f.versions,f.tx.getTransactionManager());A1TestFixture.inject(controlled,"enabled",true);A1TestFixture.inject(f.runs,"controlled",controlled);}
+        if(b2){A1TestFixture.inject(f.guard,"enabled",true);A1TestFixture.inject(f.runs,"timeoutMs",900000L);}
+        seedSnapshot="{\"id\":\"a1-browser\",\"name\":\"A1 isolated\",\"sheetOrder\":[\"orders\",\"arrivals\"],\"sheets\":{\"orders\":{\"id\":\"orders\",\"name\":\"Orders\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{\"0\":{\"0\":{\"v\":\"initial\",\"t\":1}}}},\"arrivals\":{\"id\":\"arrivals\",\"name\":\"Arrivals\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{}}}}";workbook=f.seed(seedSnapshot);
     }
     private void send(HttpExchange x,Object value)throws Exception {byte[] bytes=json.writeValueAsBytes(value);x.getResponseHeaders().set("Content-Type","application/json;charset=utf-8");x.sendResponseHeaders(200,bytes.length);x.getResponseBody().write(bytes);x.close();}
     private void handle(HttpExchange x)throws IOException {
         try {
             f.identity();String uri=x.getRequestURI().getPath();
-            if(uri.equals("/test/state")){Map<String,Object> state=new HashMap<>();state.put("serverToken",serverToken);state.put("workbookId",workbook);state.put("runId",runId);state.put("status",f.status(workbook));send(x,state);return;}
+            if(uri.equals("/test/state")){long requested=workbook;String q=x.getRequestURI().getQuery();if(b2&&q!=null&&q.startsWith("workbookId="))requested=Long.parseLong(q.substring(11));Map<String,Object> state=new HashMap<>();state.put("serverToken",serverToken);state.put("workbookId",requested);state.put("runId",runId);state.put("status",f.status(requested));send(x,state);return;}
+            if(b2&&uri.equals("/test/new-workbook")){send(x,obj().put("workbookId",f.seed(seedSnapshot)));return;}
+            if(b2&&uri.equals("/test/chat-actions")){fixtureActions=json.readTree(x.getRequestBody());send(x,obj().put("ok",true));return;}
+            if(b2&&uri.equals("/test/external-draft")){JsonNode req=json.readTree(x.getRequestBody());long id=req.path("workbookId").asLong();ObjectNode snapshot=(ObjectNode)parse(String.valueOf(f.status(id).get("content")));((ObjectNode)snapshot.path("sheets").path("orders").path("cellData").path("0").path("0")).put("v","external-conflict");String content=snapshot.toString();f.db.update("update ai_workbook_working_state set draft_snapshot=?,content_hash=?,version=version+1 where workbook_id=? and owner_user_id=1",content.getBytes(java.nio.charset.StandardCharsets.UTF_8),com.ruoyi.ai.util.ContentHashUtils.sha256(content),id);send(x,obj().put("ok",true));return;}
             if(uri.equals("/test/run")){seedRun();send(x,obj().put("runId",runId));return;}
             if(uri.equals("/test/unknown")){seedRun();f.tx.execute(tx->{ObjectNode run=new AgentStore(f.db).locked(runId);run.put("status","PAUSED");run.set("call",obj().put("callId","unknown-browser-call").put("status","UNKNOWN"));new AgentStore(f.db).save(run);return null;});send(x,obj().put("runId",runId));return;}
             if(uri.equals("/test/fail")){f.tx.execute(tx->{ObjectNode run=new AgentStore(f.db).locked(runId);run.put("status","FAILED");new AgentStore(f.db).save(run);f.db.update("update ai_agent_lease set run_id=null,expires_at=0 where workbook_id=? and run_id=?",workbook,runId);return null;});send(x,obj().put("ok",true));return;}
             if(uri.equals("/test/complete")){completeRun();send(x,obj().put("ok",true));return;}
             if(uri.startsWith("/a1-api/")){String p=uri.substring("/a1-api".length());JsonNode req=("POST".equals(x.getRequestMethod())||"PUT".equals(x.getRequestMethod()))?json.readTree(x.getRequestBody()):obj();
-                if(p.equals("/ai/agent/capabilities")){send(x,R.ok(obj().put("enabled",false).put("recoveryAvailable",true).put("controlledWritesEnabled",controlled!=null).put("snapshotWritesEnabled",false)));return;}
+                if(p.equals("/ai/agent/capabilities")){send(x,R.ok(obj().put("enabled",b2).put("recoveryAvailable",true).put("controlledWritesEnabled",controlled!=null).put("ordinaryAiControlledEnabled",b2).put("snapshotWritesEnabled",false)));return;}
+                if(b2&&p.equals("/ai/chat")){JsonNode actions=fixtureActions.deepCopy();WriteManifest.checkChatTransport(actions,req.path("clientMeta"),controlled.enabled());com.ruoyi.ai.domain.dto.WorkbookContext context=json.treeToValue(req.path("context"),com.ruoyi.ai.domain.dto.WorkbookContext.class);for(JsonNode a:actions){com.ruoyi.ai.domain.dto.Action action=json.treeToValue(a,com.ruoyi.ai.domain.dto.Action.class);com.ruoyi.ai.service.ActionTargetValidator.normalize(action,context);((ObjectNode)a).setAll((ObjectNode)json.valueToTree(action));}send(x,R.ok(obj().put("reply","Fixture-generated actions; not a real model").set("actions",actions)));return;}
+                if(b2&&p.equals("/ai/agent/runs")){ObjectNode run=f.runs.create((ObjectNode)req,1);runId=run.path("runId").asText();installPlan(runId);send(x,R.ok(f.runs.get(runId,1)));return;}
                 if(p.equals("/ai/agent/controlled-writes")&&controlled!=null){ObjectNode run=controlled.create((ObjectNode)req,1);runId=run.path("runId").asText();send(x,R.ok(run));return;}
                 if(p.equals("/ai/workbook/list")){send(x,R.ok(f.workbooks.selectListByUserId(1L)));return;}
                 if(p.equals("/ai/agent/runs/active")){String q=x.getRequestURI().getQuery();long id=Long.parseLong(q.substring(q.indexOf('=')+1));send(x,R.ok(f.runs.active(id,1)));return;}
@@ -46,13 +55,14 @@ public class A1BrowserServer {
                 if(p.startsWith("/ai/agent/runs/")){String rest=p.substring("/ai/agent/runs/".length());String id=rest.split("/")[0];
                     if(rest.endsWith("/controlled-claims")&&controlled!=null)send(x,R.ok(controlled.claim(id,1,(ObjectNode)req)));
                     else if(rest.endsWith("/controlled-results")&&controlled!=null)send(x,R.ok(f.runs.receiptControlled(id,1,(ObjectNode)req)));
+                    else if(rest.endsWith("/controlled-uncertain")&&controlled!=null)send(x,R.ok(controlled.uncertain(id,1,(ObjectNode)req)));
                     else if(rest.endsWith("/events"))send(x,R.ok(f.runs.events(id,1,0)));
                     else if(rest.endsWith("/cancel"))send(x,R.ok(f.runs.cancel(id,1)));
                     else if(rest.endsWith("/resume"))send(x,R.ok(f.runs.resume(id,1,(ObjectNode)req)));
                     else if(rest.endsWith("/lease-heartbeat"))send(x,R.ok(f.runs.heartbeat(id,1,(ObjectNode)req)));
                     else if(rest.endsWith("/tool-claims"))send(x,R.ok(f.runs.claim(id,1,(ObjectNode)req)));
                     else if(rest.endsWith("/tool-results"))send(x,R.ok(f.runs.receipt(id,1,(ObjectNode)req)));
-                    else send(x,R.ok(f.runs.get(id,1)));return;
+                    else {if(b2)advancePlan(id);send(x,R.ok(f.runs.get(id,1)));}return;
                 }
                 if(p.matches("/ai/workbook/[0-9]+.*")){long id=Long.parseLong(p.split("/")[3]);
                     if(p.endsWith("/working-state"))send(x,f.save(id,json.treeToValue(req,WorkingStateRequest.class)));
@@ -67,6 +77,8 @@ public class A1BrowserServer {
             x.getResponseHeaders().set("Content-Type",type+";charset=utf-8");byte[] bytes=Files.readAllBytes(file);x.sendResponseHeaders(200,bytes.length);x.getResponseBody().write(bytes);x.close();
         }catch(Exception e){try{send(x,R.fail(409,e.getMessage()));}catch(Exception ignored){x.close();}}
     }
+    private void installPlan(String id){f.tx.execute(tx->{AgentStore store=new AgentStore(f.db);ObjectNode r=store.locked(id);ObjectNode plan=(ObjectNode)parse("{\"steps\":[{\"stepId\":\"W\",\"objective\":\"fixture write\",\"tool\":\"apply_actions\",\"dependsOn\":[],\"inputBindings\":{\"overwrite\":\"empty-only\"},\"verificationRules\":[{\"type\":\"tool_success\"}]},{\"stepId\":\"V\",\"objective\":\"fixture verify\",\"tool\":\"verify_result\",\"dependsOn\":[\"W\"],\"inputBindings\":{\"write\":{\"$step\":\"W\"},\"sheetId\":\"orders\",\"range\":\"B2:C2\",\"kind\":\"non_empty\"},\"verificationRules\":[{\"type\":\"tool_success\"}]}],\"acceptanceCriteria\":[{\"type\":\"step_succeeded\",\"stepId\":\"W\"},{\"type\":\"step_succeeded\",\"stepId\":\"V\"}]}");((ObjectNode)plan.path("steps").get(0).path("inputBindings")).set("actions",fixtureActions.deepCopy());r.set("plan",plan);r.put("planVersion",1).put("stepIndex",0).put("status","EXECUTING");store.save(r);return null;});}
+    private void advancePlan(String id)throws Exception{java.lang.reflect.Method advance=AgentRunService.class.getDeclaredMethod("advance",ObjectNode.class);advance.setAccessible(true);f.tx.execute(tx->{AgentStore store=new AgentStore(f.db);ObjectNode prior=store.get(id);if("CONTROLLED_WRITE".equals(prior.path("kind").asText())||!"EXECUTING".equals(prior.path("status").asText()))return null;f.guard.lock(prior.path("workbookId").asLong(),1L);ObjectNode r=store.locked(id);try{advance.invoke(f.runs,r);}catch(Exception e){throw new RuntimeException(e);}store.save(r);return null;});}
     private void seedRun(){
         if(runId!=null&&!Arrays.asList("COMPLETED","CANCELLED","FAILED").contains(f.runs.get(runId,1).path("status").asText()))throw new IllegalStateException("Fixture run already active");runId=UUID.randomUUID().toString();ObjectNode ws=f.runs.workspace(workbook,1);
         ObjectNode run=obj().put("runId",runId).put("workbookId",workbook).put("branchId",ws.path("branchId").asLong()).put("userId",1).put("version",0).put("eventSeq",0).put("status","EXECUTING").put("fencingToken",1).put("revision",ws.path("revision").asText());

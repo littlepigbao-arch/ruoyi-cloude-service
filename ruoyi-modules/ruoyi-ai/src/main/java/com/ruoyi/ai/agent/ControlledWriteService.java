@@ -38,6 +38,8 @@ public class ControlledWriteService {
         return tx.execute(status->{guard.lock(workbook,user);List<String> ids=store.db.queryForList("select run_id from ai_agent_run where user_id=? and request_id=?",String.class,user,requestId);
             if(!ids.isEmpty()){ObjectNode existing=store.locked(ids.get(0));require("CONTROLLED_WRITE".equals(existing.path("kind").asText())&&requestHash.equals(existing.path("requestHash").asText()),"WRITE_IDEMPOTENCY_CONFLICT: 相同请求ID参数不同");return view(existing);}
             ObjectNode r=obj().put("runId",UUID.randomUUID().toString()).put("requestHash",requestHash).put("requestId",requestId).put("userId",user).put("workbookId",workbook).put("branchId",req.path("branchId").asLong()).put("version",0).put("eventSeq",0).put("kind","CONTROLLED_WRITE").put("transportVersion",2).put("status","EXECUTING").put("goal","受控值写入").put("persistenceStatus","NOT_SAVED").put("deadline",System.currentTimeMillis()+900000);
+            String entry=req.path("entryPoint").asText("explicit");require(req.path("goal").asText("").length()<=8000,"请求过长");if(req.hasNonNull("goal"))r.put("goal",req.path("goal").asText());require(Arrays.asList("explicit","ordinary-ai","plan-agent").contains(entry),"WRITE_ENTRY_INVALID");r.put("entryPoint",entry);
+            if(req.hasNonNull("conversationId")){require(!store.db.queryForList("select conversation_id from ai_conversation where conversation_id=? and user_id=? and workbook_id=?",req.path("conversationId").asText(),user,workbook).isEmpty(),"WRITE_FORBIDDEN: 会话与工作簿不匹配");r.set("conversationId",req.get("conversationId"));}
             r.set("constraints",arr());r.set("outputs",obj());r.set("completedSteps",arr());r.set("writeScopes",req.path("writeScopes").deepCopy());r.put("activeSheetId",req.path("activeSheetId").asText());r.put("allowOverwrite","confirmed".equals(req.path("overwrite").asText()));
             r.set("expectedDraftVersion",req.path("expectedDraftVersion"));r.set("expectedBranchVersion",req.path("expectedBranchVersion"));r.set("loadedRevision",req.path("loadedRevision"));
             Map<String,Object> state=current(r);sameVersion(r,state);JsonNode snapshot=parse(String.valueOf(state.get("content")));r.put("revision",hash(snapshot));
@@ -81,6 +83,14 @@ public class ControlledWriteService {
         c.put("status","SUCCEEDED").put("receiptHash",receiptHash).put("persistenceStatus","SAVED");c.set("result",result);store.call(r,c);r.set("lastControlledResult",result);r.set("lastControlledManifest",m);r.put("revision",hash(next)).put("loadedRevision",loaded).put("expectedDraftVersion",expected+1).put("persistenceStatus","SAVED");
         if("CONTROLLED_WRITE".equals(r.path("kind").asText())){r.put("status","COMPLETED");store.db.update("update ai_agent_lease set run_id=null,expires_at=0 where workbook_id=? and run_id=?",r.path("workbookId").asLong(),id);}else{require(completed!=null,"CONTROLLED_COMPLETION_REQUIRED");r.set("expectedSnapshot",next);completed.accept(r,result);}
         r.remove("call");store.event(r,"CONTROLLED_SAVED","目标值已独立验证并 CAS 保存，未创建正式 Commit");return view(r);
+    });}
+    /** A lost receipt may have committed. Serialize reconciliation with receipt/CAS using the same locks. */
+    public ObjectNode uncertain(String id,long user,ObjectNode req){return mutate(id,user,r->{
+        require(!req.has("snapshot"),"SNAPSHOT_WRITE_BLOCKED");List<String> rows=store.db.queryForList("select call_json from ai_agent_tool_call where run_id=? and call_id=?",String.class,id,text(req,"callId"));require(rows.size()==1,"WRITE_CALL_NOT_FOUND");ObjectNode c=(ObjectNode)parse(rows.get(0));
+        require(c.path("transportVersion").asInt()==2&&c.path("claimToken").asText().equals(text(req,"claimToken"))&&c.path("argsHash").asText().equals(text(req,"argsHash"))&&c.path("manifest").path("fencingToken").asLong()==req.path("fencingToken").asLong(),"WRITE_RECEIPT_IDENTITY_INVALID");
+        if("SUCCEEDED".equals(c.path("status").asText()))return view(r);
+        require(Arrays.asList("CLAIMED","UNKNOWN").contains(c.path("status").asText())&&r.path("call").path("callId").equals(c.path("callId")),"RESULT_UNKNOWN: 调用不可重新派发");
+        c.put("status","UNKNOWN");store.call(r,c);r.set("call",c);if(!"CANCELLING".equals(r.path("status").asText()))r.put("status","PAUSED");r.put("persistenceStatus","NOT_SAVED").put("message","RESULT_UNKNOWN: 未核实保存结果，保持保护；仅允许核实或取消，不自动重放");store.event(r,"CONTROLLED_UNKNOWN",r.path("message").asText());return view(r);
     });}
     private ObjectNode view(ObjectNode r){ObjectNode out=r.deepCopy();out.remove(Arrays.asList("initialSnapshot","expectedSnapshot","proposal","requestHash"));if(out.path("call").isObject())((ObjectNode)out.path("call")).remove("claimToken");return out;}
 }

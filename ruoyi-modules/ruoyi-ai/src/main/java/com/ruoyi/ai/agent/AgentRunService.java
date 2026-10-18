@@ -38,6 +38,7 @@ public class AgentRunService {
     public ObjectNode createControlled(ObjectNode request,long user){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.create(request,user);}
     public ObjectNode claimControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.claim(id,user,request);}
     public ObjectNode receiptControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.receipt(id,user,request,this::completeStep);}
+    public ObjectNode uncertainControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.uncertain(id,user,request);}
     @Value("${ai.agent.replanning-enabled:true}") private boolean replanning;
     @Value("${ai.agent.business-tools-enabled:true}") private boolean businessTools;
     @Value("${ai.agent.max-context-chars:24000}") private int contextLimit;
@@ -92,7 +93,7 @@ public class AgentRunService {
             require(store.db.update("update ai_agent_lease set run_id=?,fencing_token=fencing_token+1,expires_at=? where workbook_id=? and run_id is null",id,now+120000,workbook)==1,"已有活动任务，不能重复创建");
             long fence=store.db.queryForObject("select fencing_token from ai_agent_lease where workbook_id=?",Long.class,workbook);
             ObjectNode r=obj().put("runId",id).put("userId",user).put("workbookId",workbook).put("branchId",branch).put("requestHash",hash(req))
-                .put("goal",goal).put("status","QUEUED").put("version",0).put("eventSeq",0).put("revision",revision).put("startRevision",revision)
+                .put("goal",goal).put("entryPoint","plan-agent").put("status","QUEUED").put("version",0).put("eventSeq",0).put("revision",revision).put("startRevision",revision)
                 .put("fencingToken",fence).put("startedAt",now).put("deadline",now+timeoutMs).put("modelCalls",0).put("tokens",0).put("replans",0).put("planVersion",0)
                 .put("allowOverwrite",req.path("allowOverwrite").asBoolean()).put("persistenceStatus","SAVED");
             r.set("outputs",obj());r.set("completedSteps",arr());r.set("constraints",arr());r.set("initialSnapshot",snapshot);r.set("expectedSnapshot",snapshot);
