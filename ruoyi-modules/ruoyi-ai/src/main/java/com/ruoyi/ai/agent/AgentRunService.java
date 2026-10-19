@@ -70,16 +70,30 @@ public class AgentRunService {
             .put("draftActionsJson",String.valueOf(draft.get("draftActionsJson")))
             .put("executedChangesJson",String.valueOf(draft.get("executedChangesJson"))));return out;
     });}
+    public Set<String> availableTools(){Set<String> result=new TreeSet<>(AgentPlan.TOOLS);result.remove("write_result");if(!controlledWritesEnabled())result.remove("apply_actions");if(!businessTools)result.removeAll(Arrays.asList("build_dataset","aggregate_table","join_tables","derive_columns"));return result;}
+    private void admitPlan(JsonNode plan,ObjectNode r){for(JsonNode step:plan.path("steps"))require(availableTools().contains(step.path("tool").asText()),"AI_CAPABILITY_BLOCKED: 当前不可用工具 "+step.path("tool").asText());AgentPlan.validateForRun(plan,r.has("initialSnapshot")?r.path("initialSnapshot"):r.path("expectedSnapshot"),r.path("writeScopes"),r.path("activeSheetId").asText(),r.path("allowOverwrite").asBoolean(),controlledWritesEnabled());}
     private void enabledCheck(){require(enabled(),"Plan-and-Execute尚未启用，请先执行数据库迁移并配置ai.agent.enabled");}
     public ObjectNode get(String id,long user){ObjectNode r=store.get(id);require(r.path("userId").asLong()==user,"任务不存在或无权访问");return view(r);}
     public List<JsonNode> events(String id,long user,long after){get(id,user);List<JsonNode> out=new ArrayList<>();store.db.queryForList("select event_json from ai_agent_event where run_id=? and sequence_no>? order by sequence_no limit 200",String.class,id,Math.max(0,after)).forEach(s->out.add(parse(s)));return out;}
     public ObjectNode active(long workbook,long user){guardOwnership(workbook,user);if(!recoveryAvailable())return obj();List<String> ids=store.db.queryForList("select run_id from ai_agent_run where workbook_id=? and user_id=? order by created_at desc limit 1",String.class,workbook,user);return ids.isEmpty()?obj():get(ids.get(0),user);}
+    /** Query persisted identity under the creation lock. Absence is never proof that creation failed. */
+    public ObjectNode resolveCreation(ObjectNode query,long user){
+        JsonNode request=query.path("request");require(request.isObject(),"WRITE_REQUEST_REQUIRED");String kind=text(query,"kind");require(Arrays.asList("PLAN_AGENT","CONTROLLED_WRITE").contains(kind),"WRITE_ENTRY_INVALID");
+        long workbook=request.path("workbookId").asLong();String requestId=text(request,"requestId");require(requestId.length()<=80,"请求ID过长");
+        return tx.execute(txStatus->{guard.lock(workbook,user);List<Map<String,Object>> rows=store.db.queryForList("select run_id,request_hash from ai_agent_run where user_id=? and request_id=?",user,requestId);
+            if(rows.isEmpty())return obj().put("status","UNRESOLVED").put("requestId",requestId).put("creationVerified",false);
+            ObjectNode r=store.locked(String.valueOf(rows.get(0).get("run_id")));boolean direct="CONTROLLED_WRITE".equals(r.path("kind").asText());
+            require(direct=="CONTROLLED_WRITE".equals(kind)&&r.path("workbookId").asLong()==workbook&&r.path("branchId").asLong()==request.path("branchId").asLong(),"WRITE_IDEMPOTENCY_CONFLICT: 请求归属不一致");
+            require((direct?WriteManifest.digest(request):hash(request)).equals(String.valueOf(rows.get(0).get("request_hash"))),"WRITE_IDEMPOTENCY_CONFLICT: 请求参数不一致");
+            ObjectNode result=view(r);result.put("requestId",requestId);return obj().put("creationVerified",true).put("requestId",requestId).set("run",result);
+        });
+    }
     private void guardOwnership(long workbook,long user){require(workbooks.selectById(workbook,user)!=null,"工作簿不存在或无权访问");}
     private <T> T mutate(String id,long user,Function<ObjectNode,T> fn){
         ObjectNode preview=store.get(id);require(preview.path("userId").asLong()==user,"任务不存在或无权访问");
         return tx.execute(status->{guard.lock(preview.path("workbookId").asLong(),user);ObjectNode r=store.locked(id);T out=fn.apply(r);store.save(r);return out;});
     }
-    public ObjectNode create(ObjectNode req,long user){enabledCheck();
+    public ObjectNode create(ObjectNode req,long user){WriteManifest.checkTransport(req);enabledCheck();
         String goal=text(req,"goal"),requestId=text(req,"requestId");require(goal.length()<=8000&&requestId.length()<=80,"请求过长");long workbook=req.path("workbookId").asLong(),branch=req.path("branchId").asLong();
         return tx.execute(status->{guard.lock(workbook,user);
             List<String> previous=store.db.queryForList("select run_id from ai_agent_run where user_id=? and request_id=?",String.class,user,requestId);
@@ -93,7 +107,7 @@ public class AgentRunService {
             require(store.db.update("update ai_agent_lease set run_id=?,fencing_token=fencing_token+1,expires_at=? where workbook_id=? and run_id is null",id,now+120000,workbook)==1,"已有活动任务，不能重复创建");
             long fence=store.db.queryForObject("select fencing_token from ai_agent_lease where workbook_id=?",Long.class,workbook);
             ObjectNode r=obj().put("runId",id).put("userId",user).put("workbookId",workbook).put("branchId",branch).put("requestHash",hash(req))
-                .put("goal",goal).put("entryPoint","plan-agent").put("status","QUEUED").put("version",0).put("eventSeq",0).put("revision",revision).put("startRevision",revision)
+                .put("goal",goal).put("requestId",requestId).put("entryPoint","plan-agent").put("status","QUEUED").put("version",0).put("eventSeq",0).put("revision",revision).put("startRevision",revision)
                 .put("fencingToken",fence).put("startedAt",now).put("deadline",now+timeoutMs).put("modelCalls",0).put("tokens",0).put("replans",0).put("planVersion",0)
                 .put("allowOverwrite",req.path("allowOverwrite").asBoolean()).put("persistenceStatus","SAVED");
             r.set("outputs",obj());r.set("completedSteps",arr());r.set("constraints",arr());r.set("initialSnapshot",snapshot);r.set("expectedSnapshot",snapshot);
@@ -143,13 +157,29 @@ public class AgentRunService {
         Map<String,Object> state=new HashMap<>();state.put("workbookId",w);state.put("branchId",b);state.put("ownerUserId",u);state.put("baseCommitId",branch.get("headCommitId"));state.put("draftActionsJson",actions.toString());state.put("executedChangesJson",changes.toString());state.put("content",snapshot.toString().getBytes(StandardCharsets.UTF_8));state.put("contentHash",ContentHashUtils.sha256(snapshot.toString()));versions.upsertWorkingState(state);
         r.put("revision",hash(snapshot));r.set("expectedSnapshot",snapshot);r.put("persistenceStatus","SAVED");store.event(r,"SAVED","步骤已回读核对并保存工作草稿，未创建正式Commit");
     }
-    public ObjectNode cancel(String id,long user){return mutate(id,user,r->{if(terminal(r))return view(r);r.put("status","CANCELLING").put("cancelRequested",true);JsonNode c=r.path("call");if(Arrays.asList("CLAIMED","UNKNOWN").contains(c.path("status").asText())){store.event(r,"CANCELLING","等待在途写入核实；请重新加载服务器草稿后确认停止");}else{if(c.path("transportVersion").asInt()==2&&"PENDING".equals(c.path("status").asText())){((ObjectNode)c).put("status","CANCELLED");store.call(r,(ObjectNode)c);}finish(r,"CANCELLED","任务已停止，已保存的步骤仍然保留");}return view(r);});}
+    public ObjectNode cancel(String id,long user){return mutate(id,user,r->{if(terminal(r))return view(r);r.put("status","CANCELLING").put("cancelRequested",true);if(controlled!=null&&controlled.reconcileLifecycleLocked(r))return view(r);JsonNode c=r.path("call");if(Arrays.asList("CLAIMED","UNKNOWN").contains(c.path("status").asText())){store.event(r,"CANCELLING","等待在途写入核实；请重新加载服务器草稿后确认停止");}else{if(c.path("transportVersion").asInt()==2&&"PENDING".equals(c.path("status").asText())){((ObjectNode)c).put("status","CANCELLED");store.call(r,(ObjectNode)c);}finish(r,"CANCELLED","任务已停止，已保存的步骤仍然保留");}return view(r);});}
     public ObjectNode resume(String id,long user,ObjectNode req){return mutate(id,user,r->{require(Arrays.asList("PAUSED","CANCELLING","WAITING_USER").contains(r.path("status").asText()),"当前状态不能恢复");
         JsonNode trusted=current(r.path("workbookId").asLong(),r.path("branchId").asLong(),user);
         require(req.path("reloadedServerDraft").asBoolean()&&hash(trusted).equals(text(req,"expectedRevision")),"必须先重新加载服务器草稿，核实在途结果");
         require(!r.has("call")||r.path("cancelRequested").asBoolean(),"SNAPSHOT_WRITE_BLOCKED: 旧写任务仅允许核实后安全取消，不能重放");
-        long fence=r.path("fencingToken").asLong()+1;require(store.db.update("update ai_agent_lease set fencing_token=?,expires_at=? where workbook_id=? and run_id=?",fence,System.currentTimeMillis()+120000,r.path("workbookId").asLong(),id)==1,"任务租约已丢失");r.put("fencingToken",fence);
-        if(r.has("call")){ObjectNode c=(ObjectNode)r.get("call");c.put("status","CANCELLED").put("resolution","server-draft-reloaded");store.call(r,c);r.remove(Arrays.asList("call","proposal"));}
+        List<Long> fences=store.db.queryForList("select fencing_token from ai_agent_lease where workbook_id=? and run_id=? for update",Long.class,r.path("workbookId").asLong(),id);require(fences.size()==1,"任务租约已丢失");
+        long priorFence=fences.get(0),highest=Math.max(priorFence,r.path("fencingToken").asLong());require(highest<Long.MAX_VALUE,"RESULT_UNKNOWN: fencing token 已耗尽");long fence=highest+1;
+        require(store.db.update("update ai_agent_lease set fencing_token=?,expires_at=? where workbook_id=? and run_id=? and fencing_token=?",fence,System.currentTimeMillis()+120000,r.path("workbookId").asLong(),id,priorFence)==1,"任务租约已变化");r.put("fencingToken",fence);
+        if(r.has("call")){
+            List<String> calls=store.db.queryForList("select call_json from ai_agent_tool_call where run_id=? and call_id=? for update",String.class,id,text(r.path("call"),"callId"));
+            if(calls.isEmpty()){
+                require(!WriteManifest.isControlledTransport(r.path("call").path("transportVersion"))&&!"CONTROLLED_WRITE".equals(r.path("kind").asText()),"RESULT_UNKNOWN: 受控调用账本缺失，保持保护");
+                // Historical A1 tasks may predate the call ledger. Preserve their unknown facts;
+                // only stop after trusted draft reload and fencing, never fabricate a success or replay.
+                r.set("unresolvedLegacyCall",r.path("call").deepCopy());r.put("legacyCallResolution","server-draft-reloaded-and-fenced; ledger absent");
+            }else{require(calls.size()==1,"RESULT_UNKNOWN: 调用账本不唯一，保持保护");ObjectNode c=(ObjectNode)parse(calls.get(0));
+            // The persisted ledger wins over stale run.call. Never rewrite a saved receipt as cancelled.
+            if("SUCCEEDED".equals(c.path("status").asText())){
+                if(WriteManifest.isControlledTransport(c.path("transportVersion"))){require("SAVED".equals(c.path("persistenceStatus").asText())&&"SAVED".equals(c.path("result").path("persistenceStatus").asText()),"RESULT_UNKNOWN: 成功调用缺少保存证据");r.set("lastControlledResult",c.path("result"));r.set("lastControlledManifest",c.path("manifest"));}
+                r.put("persistenceStatus","SAVED");
+            }else{require(Arrays.asList("PENDING","CLAIMED","UNKNOWN","CANCELLED").contains(c.path("status").asText()),"RESULT_UNKNOWN: 调用状态不能安全取消");c.put("status","CANCELLED").put("resolution","server-draft-reloaded");store.call(r,c);}}
+            r.remove(Arrays.asList("call","proposal"));
+        }
         if(r.path("cancelRequested").asBoolean()){finish(r,"CANCELLED","在途调用已隔离，保留已保存步骤并停止");return view(r);}
         r.put("status","PAUSED");store.event(r,"RECONCILED","已核对服务器草稿并更新fencing token；A1 不重放旧任务，可安全取消");return view(r);
     });}
@@ -173,17 +203,17 @@ public class AgentRunService {
     private static boolean terminal(JsonNode r){return Arrays.asList("COMPLETED","CANCELLED","FAILED").contains(r.path("status").asText());}
     private void pause(ObjectNode r,String why){r.put("status","PAUSED").put("message",why);store.event(r,"PAUSED",why);}
     private void finish(ObjectNode r,String status,String why){r.put("status",status).put("message",why);store.db.update("update ai_agent_lease set run_id=null,expires_at=0 where workbook_id=? and run_id=?",r.path("workbookId").asLong(),r.path("runId").asText());store.event(r,status,why);}
-    private ObjectNode view(ObjectNode r){ObjectNode v=r.deepCopy();v.remove(Arrays.asList("initialSnapshot","expectedSnapshot","proposal","requestHash"));if(v.has("call")){ObjectNode c=(ObjectNode)v.get("call");c.remove("claimToken");}return v;}
+    private ObjectNode view(ObjectNode r){ObjectNode v=r.deepCopy();v.remove(Arrays.asList("initialSnapshot","expectedSnapshot","proposal","requestHash"));if(v.has("call")){ObjectNode c=(ObjectNode)v.get("call");c.remove("claimToken");}if(v.path("unresolvedLegacyCall").isObject())((ObjectNode)v.get("unresolvedLegacyCall")).remove("claimToken");return v;}
+    private String scanAfterRunId="";
     @Scheduled(fixedDelay=1500)
-    public void tick(){if(!enabled())return;try{List<Map<String,Object>> runs=store.db.queryForList("select run_id,user_id from ai_agent_run where status in ('QUEUED','PREPARING','PLANNING','EXECUTING','REPLANNING','VERIFYING','CANCELLING') order by updated_at limit 20");for(Map<String,Object> row:runs){String id=String.valueOf(row.get("run_id"));long user=((Number)row.get("user_id")).longValue();try{ObjectNode job=mutate(id,user,this::advance);if(job!=null)plan(job,user);}catch(Exception e){LOG.warn("Agent run {} paused: {}",id,e.getMessage());try{mutate(id,user,r->{if(!terminal(r))pause(r,e.getMessage());return null;});}catch(Exception ignored){LOG.warn("Agent state unavailable: {}",id);}}}}catch(Exception e){LOG.warn("Agent scheduler unavailable; check migration: {}",e.getMessage());}}
+    public void tick(){try{if(!recoveryAvailable())return;List<Map<String,Object>> runs=store.db.queryForList("select run_id,user_id from ai_agent_run where run_id>? and status in ('QUEUED','PREPARING','PLANNING','EXECUTING','REPLANNING','VERIFYING','CANCELLING','PAUSED','WAITING_USER') order by run_id limit 20",scanAfterRunId);if(runs.isEmpty()){scanAfterRunId="";return;}for(Map<String,Object> row:runs){String id=String.valueOf(row.get("run_id"));scanAfterRunId=id;long user=((Number)row.get("user_id")).longValue();try{ObjectNode job=mutate(id,user,this::advance);if(job!=null)plan(job,user);}catch(Exception e){LOG.warn("Agent run {} paused: {}",id,e.getMessage());try{mutate(id,user,r->{if(!terminal(r))pause(r,e.getMessage());return null;});}catch(Exception ignored){LOG.warn("Agent state unavailable: {}",id);}}}}catch(Exception e){LOG.warn("Agent scheduler unavailable; check migration: {}",e.getMessage());}}
     private ObjectNode advance(ObjectNode r){if(terminal(r))return null;
-        if("CONTROLLED_WRITE".equals(r.path("kind").asText()))return null;
-        if(r.path("call").path("transportVersion").asInt()==2){
-            String state=r.path("call").path("status").asText();
-            try{lease(r);}catch(Exception expired){if("CLAIMED".equals(state)){((ObjectNode)r.path("call")).put("status","UNKNOWN");store.call(r,(ObjectNode)r.path("call"));}pause(r,"RESULT_UNKNOWN: 受控写入租约待核实，不重新派发");}return null;
-        }
+        if(controlled!=null&&controlled.reconcileLifecycleLocked(r))return null;
         try{lease(r);}catch(Exception e){if(r.has("call")&&"CLAIMED".equals(r.path("call").path("status").asText())){((ObjectNode)r.get("call")).put("status","UNKNOWN");store.call(r,(ObjectNode)r.get("call"));}pause(r,"浏览器断线或租约过期；重新加载草稿后恢复，不能重放未知写入");return null;}
-        require(System.currentTimeMillis()<r.path("deadline").asLong(),"任务时间预算已耗尽");sameRevision(r);
+        if(System.currentTimeMillis()>=r.path("deadline").asLong()){if(!"PAUSED".equals(r.path("status").asText()))pause(r,"任务时间预算已耗尽；请核实或取消，不自动重放");return null;}
+        if(Arrays.asList("QUEUED","REPLANNING").contains(r.path("status").asText())&&blockUnsafeReplan(r))return null;
+        if(!enabled()||Arrays.asList("PAUSED","WAITING_USER").contains(r.path("status").asText()))return null;
+        sameRevision(r);
         String status=r.path("status").asText();
         if("CANCELLING".equals(status))return null;
         if("PLANNING".equals(status)){if(System.currentTimeMillis()-r.path("planningAt").asLong()>90000)pause(r,"模型调用中断，请恢复任务");return null;}
@@ -194,7 +224,7 @@ public class AgentRunService {
             r.put("status","PLANNING").put("planningAt",System.currentTimeMillis()).put("planningToken",UUID.randomUUID().toString()).put("modelCalls",r.path("modelCalls").asInt()+1);store.event(r,"PLANNING","正在根据真实结构生成可执行计划");return r.deepCopy();
         }
         if(r.has("call")){ObjectNode inFlight=(ObjectNode)r.get("call");if("CLAIMED".equals(inFlight.path("status").asText())){inFlight.put("status","UNKNOWN");store.call(r,inFlight);}pause(r,"SNAPSHOT_WRITE_BLOCKED: 在途写入先核实并取消，禁止重放");return null;}
-        AgentPlan.validate(r.path("plan"));
+        admitPlan(r.path("plan"),r);
         JsonNode steps=r.path("plan").path("steps");int index=r.path("stepIndex").asInt();
         if(index>=steps.size()){require("SAVED".equals(r.path("persistenceStatus").asText()),"最终草稿尚未保存");for(JsonNode s:steps)require("SUCCEEDED".equals(s.path("status").asText()),"存在未验证步骤");r.put("status","VERIFYING");store.event(r,"VERIFYING","所有有效步骤验证通过，正在检查最终保存版本");sameRevision(r);finish(r,"COMPLETED","计划步骤及整体验收已通过，最终工作草稿已保存");return null;}
         ObjectNode step=(ObjectNode)steps.get(index);JsonNode args=AgentPlan.resolve(step.path("inputBindings"),(ObjectNode)r.path("outputs"));String tool=step.path("tool").asText();step.put("status","RUNNING");
@@ -213,14 +243,14 @@ public class AgentRunService {
     private void plan(ObjectNode job,long user){String id=job.path("runId").asText();try{
         ObjectNode context=obj().put("goal",job.path("goal").asText()).put("allowOverwrite",job.path("allowOverwrite").asBoolean());context.set("constraints",job.path("constraints"));context.set("catalog",AgentTools.catalog(job.path("expectedSnapshot")));context.set("completedSteps",job.path("completedSteps"));context.put("lastError",job.path("lastError").asText());
         require(context.toString().length()<=contextLimit,"上下文超过预算，请缩小目标或开始新会话；完整历史已保留");
-        context.set("writeScopes",job.path("writeScopes"));
+        context.set("writeScopes",job.path("writeScopes"));context.set("availableTools",JSON.valueToTree(availableTools()));
         List<Map<String,String>> messages=new ArrayList<>();Map<String,String> system=new HashMap<>();system.put("role","system");system.put("content",AgentPlan.CONTRACT+"重规划只生成剩余工作，不得重复已成功写入；已完成记录不可删除。当前计划必须独立可执行，需要的旧数据重新提取。"+(controlledWritesEnabled()?"B1仅允许apply_actions中的setCell/setValues标量值；不得生成公式、样式、清空或write_result。目标必须在writeScopes之内，每次最多1000格。":""));messages.add(system);Map<String,String> userMessage=new HashMap<>();userMessage.put("role","user");userMessage.put("content",context.toString());messages.add(userMessage);
         LlmResponse response=llm.chat(messages);JsonNode parsed=parse(response.getContent());
         mutate(id,user,r->{if(!"PLANNING".equals(r.path("status").asText())||!r.path("planningToken").equals(job.path("planningToken")))return null;
             r.put("tokens",r.path("tokens").asInt()+response.getTotalTokens());require(r.path("tokens").asInt()<=tokenLimit,"token预算耗尽");
             if(blockUnsafeReplan(r))return null;
             if(parsed.has("question")){r.put("status","WAITING_USER").put("question",text(parsed,"question"));store.event(r,"WAITING_USER",r.path("question").asText());return null;}
-            AgentPlan.validate(parsed);if(r.has("plan"))for(JsonNode s:r.path("plan").path("steps"))if(!"SUCCEEDED".equals(s.path("status").asText())){((ObjectNode)s).put("status","SUPERSEDED");saveStep(r,s);}
+            try{admitPlan(parsed,r);}catch(IllegalArgumentException rejected){pause(r,"计划未生成或未通过验证："+rejected.getMessage());return null;}if(r.has("plan"))for(JsonNode s:r.path("plan").path("steps"))if(!"SUCCEEDED".equals(s.path("status").asText())){((ObjectNode)s).put("status","SUPERSEDED");saveStep(r,s);}
             int version=r.path("planVersion").asInt()+1;ObjectNode p=parsed.deepCopy();p.put("planId",UUID.randomUUID().toString()).put("planVersion",version).put("changeReason",r.path("lastError").asText("初始计划"));for(JsonNode s:p.path("steps"))((ObjectNode)s).put("status","PENDING");
             r.set("plan",p);r.set("outputs",obj());r.put("planVersion",version).put("stepIndex",0).put("status","EXECUTING");r.remove("question");store.db.update("insert into ai_agent_plan values (?,?,?,now(3))",id,version,p.toString());for(JsonNode s:p.path("steps"))saveStep(r,s);store.event(r,"PLAN_READY","计划第"+version+"版已通过契约校验");return null;
         });

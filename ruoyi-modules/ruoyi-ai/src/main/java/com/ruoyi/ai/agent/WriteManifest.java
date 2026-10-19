@@ -10,16 +10,23 @@ import static com.ruoyi.ai.agent.AgentJson.*;
 /** B1: immutable, bounded value patches. This is not another cell execution engine. */
 public final class WriteManifest {
     public static final int MAX_WRITE_CELLS=1000;
-    public static final Set<String> VALUE_ACTIONS=Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList("setCell","setValues")));
+    public static final Set<String> VALUE_ACTIONS=Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList("setCell","setValues","setCellForCell","clearRange")));
     public static final Set<String> READ_DISPLAY_ACTIONS=Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList("getRangeValue","getRangeFormulas","getMerges","getSelection","getFilter","createChart")));
     private WriteManifest() { }
+    public static boolean isControlledTransport(JsonNode version){return version.isIntegralNumber()&&java.math.BigInteger.valueOf(2).equals(version.bigIntegerValue());}
+    public static void checkTransport(JsonNode request){require(!request.has("transportVersion")||isControlledTransport(request.path("transportVersion")),"AI_CAPABILITY_BLOCKED: 不兼容的 transport");}
+    public static void requireTransport(JsonNode request){require(isControlledTransport(request.path("transportVersion")),"AI_CAPABILITY_BLOCKED: 不兼容或缺失的 transport");}
     /** Classify the whole group before execution; never run a supported subset of a mixed group. */
     public static String classify(JsonNode actions){
         require(actions.isArray()&&actions.size()<=30,"AI_CAPABILITY_BLOCKED: 动作组必须是最多30项的数组");boolean reads=false,writes=false;
-        for(JsonNode action:actions){String type=action.path("type").asText();require(action.isObject()&&(VALUE_ACTIONS.contains(type)||READ_DISPLAY_ACTIONS.contains(type)),"AI_CAPABILITY_BLOCKED: 此写动作尚未迁移至受控链路: "+type);writes|=VALUE_ACTIONS.contains(type);reads|=READ_DISPLAY_ACTIONS.contains(type);}
+        for(JsonNode action:actions){String type=action.path("type").asText();require(action.isObject()&&(VALUE_ACTIONS.contains(type)||READ_DISPLAY_ACTIONS.contains(type)),"AI_CAPABILITY_BLOCKED: 此写动作尚未迁移至受控链路: "+type);checkB4Action(action);writes|=VALUE_ACTIONS.contains(type);reads|=READ_DISPLAY_ACTIONS.contains(type);}
         require(!(reads&&writes),"AI_CAPABILITY_BLOCKED: 读取展示与写入混合动作组暂不执行，请拆分请求");return writes?"controlled-values":"read-display";
     }
-    public static String checkChatTransport(JsonNode actions,JsonNode clientMeta,boolean enabled){String mode=classify(actions);if("controlled-values".equals(mode)){require(enabled,"CONTROLLED_DISABLED: 受控写入入口未开启");require(clientMeta.path("controlledWriteTransport").isIntegralNumber()&&clientMeta.path("controlledWriteTransport").asInt()==2,"CONTROLLED_CLIENT_REQUIRED: 写动作需要受控客户端，不能直接本地执行后保存 Snapshot");}return mode;}
+    public static String checkChatTransport(JsonNode actions,JsonNode clientMeta,boolean enabled){String mode=classify(actions);if("controlled-values".equals(mode)){require(enabled,"CONTROLLED_DISABLED: 受控写入入口未开启");require(isControlledTransport(clientMeta.path("controlledWriteTransport")),"CONTROLLED_CLIENT_REQUIRED: 写动作需要受控客户端，不能直接本地执行后保存 Snapshot");}return mode;}
+    private static void checkB4Action(JsonNode a){
+        if("clearRange".equals(a.path("type").asText()))require(!a.has("clearWhat")||(a.path("clearWhat").isTextual()&&"content".equals(a.path("clearWhat").asText())),"AI_CAPABILITY_BLOCKED: clearRange 仅开放content");
+        if("setCellForCell".equals(a.path("type").asText())){JsonNode v=a.path("value");require(v.isTextual()||v.isNumber()||v.isBoolean(),"AI_CAPABILITY_BLOCKED: setCellForCell 仅接受非null普通标量");require(!v.isTextual()||!v.asText().trim().startsWith("="),"AI_CAPABILITY_BLOCKED: 公式写入未开放");}
+    }
     public static String digest(JsonNode value) { return hash(sorted(value)); }
     private static JsonNode sorted(JsonNode value) {
         if(value.isObject()){ObjectNode out=obj();TreeSet<String> keys=new TreeSet<>();value.fieldNames().forEachRemaining(keys::add);for(String key:keys)out.set(key,sorted(value.get(key)));return out;}
@@ -43,21 +50,25 @@ public final class WriteManifest {
         ArrayNode actions=arr(),cells=arr();Set<String> covered=new HashSet<>();
         for(JsonNode raw:rawActions){
             require(raw.isObject(),"CONTROLLED_UNSUPPORTED: 动作必须是对象");
-            Set<String> allowed=new HashSet<>(Arrays.asList("schemaVersion","operationId","type","target","sheetId","sheetName","range","value","values"));raw.fieldNames().forEachRemaining(key->require(allowed.contains(key),"CONTROLLED_UNSUPPORTED: 非值写字段 "+key));
+            checkB4Action(raw);String rawType=raw.path("type").asText();boolean clear="clearRange".equals(rawType);
+            Set<String> allowed=new HashSet<>(Arrays.asList("schemaVersion","operationId","type","target","sheetId","sheetName","range"));allowed.add(clear?"clearWhat":"setValues".equals(rawType)?"values":"value");raw.fieldNames().forEachRemaining(key->require(allowed.contains(key),"CONTROLLED_UNSUPPORTED: 非值写字段 "+key));
             Action a;try{a=JSON.treeToValue(raw,Action.class);}catch(Exception e){throw new IllegalArgumentException("CONTROLLED_UNSUPPORTED: 动作格式无效",e);}
-            require(Arrays.asList("setCell","setValues").contains(a.getType()),"CONTROLLED_UNSUPPORTED: B1 仅支持 setCell/setValues");
+            require(VALUE_ACTIONS.contains(a.getType()),"CONTROLLED_UNSUPPORTED: 写动作尚未迁移");
             ActionTargetValidator.normalize(a,context);ObjectNode normalized=JSON.valueToTree(a);JsonNode target=normalized.path("target");String sheetId=text(target,"sheetId");int[] r=AgentTools.range(text(target,"range"));JsonNode s=AgentTools.sheet(snapshot,sheetId);
+            if(clear){normalized.put("clearWhat","content");for(JsonNode resource:snapshot.path("resources"))if(resource.path("name").asText().toLowerCase(Locale.ROOT).contains("filter"))require(resource.path("data").isTextual()&&Arrays.asList("","{}","null").contains(resource.path("data").asText().trim()),"CONTROLLED_UNSUPPORTED: 筛选状态下清除尚未证明安全");}
             require(r[2]<s.path("rowCount").asInt()&&r[3]<s.path("columnCount").asInt(),"WRITE_SCOPE_INVALID: 不允许自动截断或扩展 Sheet");
             boolean authorized=false;for(JsonNode scope:scopes){int[] permitted=AgentTools.range(text(scope,"range"));if(sheetId.equals(scope.path("sheetId").asText())&&r[0]>=permitted[0]&&r[1]>=permitted[1]&&r[2]<=permitted[2]&&r[3]<=permitted[3])authorized=true;}require(authorized,"WRITE_SCOPE_DENIED: 动作超出预先授权区域");
             for(JsonNode merge:s.path("mergeData"))require(r[2]<merge.path("startRow").asInt()||r[0]>merge.path("endRow").asInt()||r[3]<merge.path("startColumn").asInt()||r[1]>merge.path("endColumn").asInt(),"CONTROLLED_UNSUPPORTED: 不支持合并单元格写入");
-            if("setCell".equals(a.getType()))require(r[0]==r[2]&&r[1]==r[3]&&raw.has("value"),"WRITE_SHAPE_INVALID: setCell 必须是单个单元格");
-            else {require(raw.path("values").isArray()&&raw.path("values").size()==r[2]-r[0]+1,"WRITE_SHAPE_INVALID: 行数不符");for(JsonNode row:raw.path("values"))require(row.isArray()&&row.size()==r[3]-r[1]+1,"WRITE_SHAPE_INVALID: 列数不符");}
+            if("setCell".equals(a.getType())||"setCellForCell".equals(a.getType()))require(r[0]==r[2]&&r[1]==r[3]&&raw.has("value"),"WRITE_SHAPE_INVALID: 标量赋值必须是单个单元格");
+            else if(!clear){require(raw.path("values").isArray()&&raw.path("values").size()==r[2]-r[0]+1,"WRITE_SHAPE_INVALID: 行数不符");for(JsonNode row:raw.path("values"))require(row.isArray()&&row.size()==r[3]-r[1]+1,"WRITE_SHAPE_INVALID: 列数不符");}
             for(int row=r[0];row<=r[2];row++)for(int col=r[1];col<=r[3];col++){
                 require(cells.size()<MAX_WRITE_CELLS,"WRITE_BUDGET_EXCEEDED: B1 每次最多1000单元格");String key=sheetId+":"+row+":"+col;require(covered.add(key),"WRITE_SCOPE_INVALID: 不接受重叠动作");
-                JsonNode value="setCell".equals(a.getType())?raw.path("value"):raw.path("values").get(row-r[0]).get(col-r[1]);
+                JsonNode value=clear?NullNode.instance:"setValues".equals(a.getType())?raw.path("values").get(row-r[0]).get(col-r[1]):raw.path("value");
                 require(value.isNull()||value.isBoolean()||value.isNumber()||value.isTextual(),"CONTROLLED_UNSUPPORTED: 仅接受标量值");require(!value.isTextual()||!value.asText().trim().startsWith("="),"CONTROLLED_UNSUPPORTED: 公式写入未开放");
                 JsonNode before=AgentTools.cell(s,row,col);require("confirmed".equals(overwrite)||(!before.hasNonNull("v")&&!before.hasNonNull("p")),"WRITE_POLICY_DENIED: 目标已有内容");
+                if(clear){require(!before.hasNonNull("custom"),"CONTROLLED_UNSUPPORTED: clearContent会清除custom元数据，本批拒绝");JsonNode rd=s.path("rowData").path(String.valueOf(row)).path("hd"),cd=s.path("columnData").path(String.valueOf(col)).path("hd");require(!(rd.asInt()==1||rd.asBoolean(false)||cd.asInt()==1||cd.asBoolean(false)),"CONTROLLED_UNSUPPORTED: 隐藏行列清除尚未证明安全");}
                 ObjectNode cell=obj().put("sheetId",sheetId).put("row",row).put("column",col);cell.set("value",value);cell.set("before",before.deepCopy());cells.add(cell);
+                if(clear)cell.put("operation","clear-content");
             }
             actions.add(normalized);
         }
@@ -81,7 +92,9 @@ public final class WriteManifest {
     public static ObjectNode apply(JsonNode trusted,JsonNode manifest) {
         ObjectNode next=trusted.deepCopy();for(JsonNode patch:manifest.path("cells")){
             ObjectNode s=AgentTools.sheet(next,text(patch,"sheetId"));ObjectNode c=s.with("cellData").with(patch.path("row").asText()).with(patch.path("column").asText());
-            c.remove(Arrays.asList("v","f","p","t","si"));JsonNode v=patch.path("value");if(!v.isNull()){c.set("v",v);c.put("t",v.isNumber()?2:v.isBoolean()?3:1);}
+            c.remove(Arrays.asList("v","f","p","t","si"));JsonNode v=patch.path("value");if(!v.isNull()){if(v.isBoolean())c.put("v",v.asBoolean()?1:0);else c.set("v",v);c.put("t",v.isNumber()?2:v.isBoolean()?3:1);}
         }return next;
     }
+    /** Univer's boolean storage is numeric with t=3; zero with t=2 remains a number. */
+    public static JsonNode semanticValue(JsonNode cell){JsonNode v=cell.path("v");if(cell.path("t").isIntegralNumber()&&cell.path("t").asInt()==3&&v.isNumber()&&(v.decimalValue().compareTo(java.math.BigDecimal.ZERO)==0||v.decimalValue().compareTo(java.math.BigDecimal.ONE)==0))return BooleanNode.valueOf(v.asInt()==1);return cell.hasNonNull("v")?v:NullNode.instance;}
 }

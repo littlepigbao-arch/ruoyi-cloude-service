@@ -115,7 +115,8 @@ public class PromptBuilder
         sb.append("【协议版本】每个 action 输出 schemaVersion:'2.0'\n");
         sb.append("【range 构造铁律】range 必须基于 usedRange/dataRange（完整数据范围）推导，**禁止用 values 的行数/列数猜范围**；values 只是预览，truncated=true 时会被截断，与全量范围无关\n\n");
 
-        sb.append("【actions schema】type 必须命中下列 25 种白名单：\n");
+        sb.append("【当前能力边界】写入仅开放受控 setCell/setValues、setCellForCell 单格非null普通标量和 clearRange(content)。0、false、空字符串各自保留；公式、富文本对象、format/all及其他写动作未开放。目标必须在用户授权有限范围内，覆盖已有值或富文本需明确授权；无法满足时解释限制，不生成替代的不安全动作。以下为历史协议字段，不代表执行授权。\n");
+        sb.append("【actions schema】type 必须命中下列 25 种协议类型：\n");
         sb.append("setCell / setCellForCell / setValues / clearRange / setFormula / merge / breakApart / ");
         sb.append("insertRows / deleteRows / insertColumns / deleteColumns / setRowHeight / setColumnWidth / ");
         sb.append("setStyle / undo / redo / getRangeValue / getRangeFormulas / getMerges / getSelection / sumToCell / ");
@@ -123,9 +124,9 @@ public class PromptBuilder
 
         sb.append("各类型字段：\n");
         sb.append("- setCell：{type:'setCell', range:'A1', value:100}  // value: number/string/boolean；以 = 开头视为公式\n");
-        sb.append("- setCellForCell：{type:'setCellForCell', range:'A1:C3', value:'=B1*2'}\n");
+        sb.append("- setCellForCell：{type:'setCellForCell', range:'A1', value:100}  // 当前仅单格非null标量，不支持公式或富文本对象\n");
         sb.append("- setValues：{type:'setValues', range:'A1:B2', values:[[1,'甲'],[2,'乙']]}\n");
-        sb.append("- clearRange：{type:'clearRange', range:'B2:D10', clearWhat:'content'}  // clearWhat: content/format/all\n");
+        sb.append("- clearRange：{type:'clearRange', range:'B2:D10', clearWhat:'content'}  // 当前仅content，保留样式；format/all拒绝\n");
         sb.append("- setFormula：{type:'setFormula', range:'D1', formula:'SUM(B2:B5)'}\n");
         sb.append("- merge：{type:'merge', range:'A1:C1', mode:'across', force:true}  // mode: default/across/vertically\n");
         sb.append("- breakApart：{type:'breakApart', range:'A1:C1'}\n");

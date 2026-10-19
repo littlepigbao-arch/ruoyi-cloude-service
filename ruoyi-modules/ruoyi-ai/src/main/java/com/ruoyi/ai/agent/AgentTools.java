@@ -189,7 +189,14 @@ public class AgentTools {
         }}}
         require(!a.path("failOnViolation").asBoolean(true)||errors==0,"数据质量验证失败，共"+errors+"项");ObjectNode result=obj().put("errors",errors).put("checkedRows",d.path("rows").size());result.set("examples",examples);return result;
     }
-    public static ObjectNode verify(JsonNode snapshot,JsonNode a){JsonNode s=sheet(snapshot,text(a,"sheetId"));int[] r=range(text(a,"range"));String kind=text(a,"kind");require(Arrays.asList("non_empty","product").contains(kind),"未注册验证规则");int checked=0;
+    public static ObjectNode verify(JsonNode snapshot,JsonNode a){JsonNode s=sheet(snapshot,text(a,"sheetId"));int[] r=range(text(a,"range"));String kind=text(a,"kind");require(Arrays.asList("non_empty","product","matches_write").contains(kind),"未注册验证规则");int checked=0;
+        if("matches_write".equals(kind)){
+            JsonNode write=a.path("write"),patches=write.path("executedChange").path("cells");
+            require(WriteManifest.isControlledTransport(write.path("transportVersion"))&&"SAVED".equals(write.path("persistenceStatus").asText())&&"PASSED".equals(write.path("validation").asText())&&"controlled-values".equals(write.path("executedChange").path("kind").asText()),"RESULT_UNKNOWN: 缺少可信已保存受控变更");
+            require(patches.isArray()&&patches.size()>0&&patches.size()<=WriteManifest.MAX_WRITE_CELLS,"RESULT_UNKNOWN: 已保存变更范围无效");Set<String> seen=new HashSet<>();
+            for(JsonNode patch:patches){int row=patch.path("row").asInt(-1),col=patch.path("column").asInt(-1);require(patch.path("row").isIntegralNumber()&&patch.path("column").isIntegralNumber()&&patch.path("sheetId").asText().equals(a.path("sheetId").asText())&&row>=r[0]&&row<=r[2]&&col>=r[1]&&col<=r[3]&&seen.add(row+":"+col),"RESULT_UNKNOWN: 验证范围与保存事实不一致");JsonNode actual=cell(s,row,col),v=WriteManifest.semanticValue(actual);require(patch.has("value")&&WriteManifest.digest(v).equals(WriteManifest.digest(patch.path("value")))&&!actual.hasNonNull("p")&&actual.path("f").asText("").isEmpty()&&actual.path("si").asText("").isEmpty(),"RESULT_UNKNOWN: 内容与实际保存变更不符");checked++;}
+            return obj().put("passed",true).put("checkedCells",checked).put("method","saved-controlled-content-comparison");
+        }
         Set<Integer> effectiveRows=new HashSet<>();
         if("product".equals(kind)){
             String lc=text(a,"leftColumn"),rc=text(a,"rightColumn");require(lc.matches("[A-Z]{1,3}")&&rc.matches("[A-Z]{1,3}"),"乘法字段必须为列字母");require(r[1]==r[3],"RESULT_UNKNOWN: 乘法验证必须指定单个结果列");

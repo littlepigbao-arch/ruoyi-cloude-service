@@ -47,8 +47,13 @@ public class A1TestFixture {
         Path base=Paths.get(System.getProperty("a1.module",System.getProperty("basedir",".")));
         String ddl=new String(Files.readAllBytes(base.resolve("sql/ai_workbook_20260824.sql")),java.nio.charset.StandardCharsets.UTF_8);
         ddl=ddl.substring(ddl.indexOf("CREATE TABLE ai_workbook")).replace("CREATE TABLE ai_workbook", "CREATE TABLE IF NOT EXISTS ai_workbook");
-        executeSql(ddl);executeSql(new String(Files.readAllBytes(base.resolve("sql/ai_workbook_git_20260914.sql")),java.nio.charset.StandardCharsets.UTF_8));
-        executeSql(new String(Files.readAllBytes(base.resolve("sql/ai_agent_20261013.sql")),java.nio.charset.StandardCharsets.UTF_8));
+        if(Boolean.getBoolean("a1.schema.prepared")){
+            for(String table:Arrays.asList("ai_workbook","ai_workbook_branch","ai_workbook_working_state","ai_agent_run","ai_agent_lease","ai_agent_plan","ai_agent_step","ai_agent_tool_call","ai_agent_event","ai_analysis_artifact"))
+                if(db.queryForObject("select count(*) from information_schema.tables where table_schema=database() and table_name=?",Integer.class,table)!=1)throw new IllegalStateException("Prepared isolated schema missing "+table);
+        }else{
+            executeSql(ddl);executeSql(new String(Files.readAllBytes(base.resolve("sql/ai_workbook_git_20260914.sql")),java.nio.charset.StandardCharsets.UTF_8));
+            executeSql(new String(Files.readAllBytes(base.resolve("sql/ai_agent_20261013.sql")),java.nio.charset.StandardCharsets.UTF_8));
+        }
         SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(ds);
         factory.setMapperLocations(new ClassPathResource("mapper/AiWorkbookMapper.xml"),new ClassPathResource("mapper/WorkbookVersionMapper.xml"));
         SqlSessionTemplate session=new SqlSessionTemplate(factory.getObject());workbooks=session.getMapper(AiWorkbookMapper.class);versions=session.getMapper(WorkbookVersionMapper.class);

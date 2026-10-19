@@ -21,14 +21,52 @@ public final class AgentPlan {
         "derive_columns {dataset:{$step:'S1'},columns:[{name:'未到货',op:'subtract',left:{field:'采购金额'},right:{field:'到货_金额'},scale:2}],nullPolicy:'reject'} 支持 add/subtract/multiply/divide/coalesce/if_gt; " +
         "if_gt 使用 left,right,thenValue,elseValue。常量用 {value:数字}，coalesce 显式处理未匹配空值,不得默认为0。" +
         "check_data_quality {dataset:{$step:'S1'},required:['金额'],unique:['订单号'],nonNegative:['金额'],failOnViolation:true}; " +
-        "apply_actions {overwrite:'empty-only'或'confirmed',actions:[{type:'setValues',sheetId,range,values:[[...]]}]} 支持setValues,setFormula,setStyle,clearRange; " +
-        "setFormula 仅支持同Sheet同行单元格的加减乘除，如 =B2*C2,通过 values 数组逐行写入公式也可；禁止生成任意代码。" +
-        "write_result {dataset:{$step:'S1'},sheetId,range:'A1:D10',overwrite:'empty-only'或'confirmed',newSheetName:可选,highlight:{column:'未到货',gt:100000,color:'#ff0000'}}。新表sheetId用稳定自定义ID,范围尺寸必须包含字段行且与结果吻合。" +
-        "verify_result {write:{$step:'写步骤ID'},sheetId,range,kind:'non_empty'或'product',leftColumn:'B',rightColumn:'C',scale:2} 校验写入目标全范围；公式结果必须product；写步骤必须声明dependsOn。" +
+        "apply_actions {overwrite:'empty-only'或'confirmed',actions:[{type:'setValues',sheetId,range,values:[[...]]}]} 支持setCell/setValues、setCellForCell的单格非null普通标量，以及clearRange(clearWhat:'content')，有限授权范围和每次最多1000格。V2写动作必须有target.sheetId。" +
+        "清除已有内容也必须有覆盖授权；clearRange的format/all、null标量别名、write_result、公式、样式、筛选和结构写入不支持，不得换用Snapshot。实际可用工具以availableTools为准。" +
+        "verify_result {write:{$step:'写步骤ID'},sheetId,range,kind:'matches_write'或'non_empty'或'product',leftColumn:'B',rightColumn:'C',scale:2} 校验写入目标全范围；清除或空字符串必须matches_write逐格对照真实已保存变更，不得验证非空；公式结果必须product；写步骤必须声明dependsOn。" +
         "每个写步骤之后必须显式verify_result绑定写步骤，check_data_quality仅验证上游数据，不能代替写后验证；acceptanceCriteria应覆盖所有步骤且不允许自然语言断言。" +
         "业务规则不清楚或需覆盖已有数据且用户未授权时先question，不得使用confirmed。金额使用十进制与HALF_UP,负值不得静默归零。";
 
     private AgentPlan() { }
+    /** B3: whole-plan admission is pure and happens before any tool call or artifact is created. */
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled) {
+        transport(plan);validate(plan);
+        Set<String> datasets=new HashSet<>();
+        for(JsonNode step:plan.path("steps")){
+            transport(step);String tool=text(step,"tool");JsonNode a=step.path("inputBindings");transport(a);
+            require(!"write_result".equals(tool),"AI_CAPABILITY_BLOCKED: write_result 尚未迁移至受控链路");
+            switch(tool){
+                case "get_workbook_catalog": fields(a);break;
+                case "inspect_sheet": fields(a,"sheetId");target(a,snapshot,false);break;
+                case "read_range": fields(a,"sheetId","range");target(a,snapshot,true);break;
+                case "build_dataset":
+                    fields(a,"sheetId","range","headerRow","includeHidden","includeFiltered","formulaPolicy");target(a,snapshot,true);
+                    require(a.path("headerRow").isBoolean()&&a.path("headerRow").asBoolean()&&a.path("includeHidden").isBoolean()&&a.path("includeHidden").asBoolean()&&a.path("includeFiltered").isBoolean()&&a.path("includeFiltered").asBoolean()&&"reject".equals(a.path("formulaPolicy").asText()),"AI_CAPABILITY_BLOCKED: 数据集口径参数无效");break;
+                case "aggregate_table":fields(a,"dataset","groupBy","sums");datasetRef(a.path("dataset"),datasets);strings(a.path("groupBy"));strings(a.path("sums"));break;
+                case "join_tables":fields(a,"left","right","leftKey","rightKey","rightPrefix","cardinality");datasetRef(a.path("left"),datasets);datasetRef(a.path("right"),datasets);text(a,"leftKey");text(a,"rightKey");text(a,"rightPrefix");require("many-to-one".equals(a.path("cardinality").asText()),"AI_CAPABILITY_BLOCKED: 关联基数无效");break;
+                case "derive_columns":
+                    fields(a,"dataset","columns","nullPolicy");datasetRef(a.path("dataset"),datasets);require("reject".equals(a.path("nullPolicy").asText())&&a.path("columns").isArray()&&a.path("columns").size()>0,"AI_CAPABILITY_BLOCKED: 计算列参数无效");
+                    for(JsonNode c:a.path("columns")){fields(c,"name","op","left","right","scale","thenValue","elseValue");text(c,"name");String op=text(c,"op");require(Arrays.asList("add","subtract","multiply","divide","coalesce","if_gt").contains(op),"AI_CAPABILITY_BLOCKED: 计算列运算未注册");operand(c.path("left"));operand(c.path("right"));if(c.has("scale"))require(c.path("scale").isIntegralNumber()&&c.path("scale").asInt()>=0&&c.path("scale").asInt()<=10,"AI_CAPABILITY_BLOCKED: 小数精度无效");if("if_gt".equals(op))require(c.has("thenValue")&&c.has("elseValue"),"AI_CAPABILITY_BLOCKED: 条件分支值缺失");}break;
+                case "check_data_quality":fields(a,"dataset","required","unique","nonNegative","failOnViolation");datasetRef(a.path("dataset"),datasets);int count=0;for(String k:Arrays.asList("required","unique","nonNegative"))if(a.has(k)){strings(a.path(k));count+=a.path(k).size();}require(count>0&&(!a.has("failOnViolation")||a.path("failOnViolation").isBoolean()),"AI_CAPABILITY_BLOCKED: 质量规则无效");break;
+                case "apply_actions":
+                    fields(a,"overwrite","actions","transportVersion");require(controlled,"CONTROLLED_DISABLED: 受控写入入口未开启");
+                    require("controlled-values".equals(WriteManifest.classify(a.path("actions"))),"AI_CAPABILITY_BLOCKED: apply_actions 仅支持受控标量写入");
+                    WriteManifest.create(snapshot,a.path("actions"),scopes,activeSheet,text(a,"overwrite"),overwrite);break;
+                case "verify_result":
+                    fields(a,"write","sheetId","range","kind","leftColumn","rightColumn","scale");target(a,snapshot,true);
+                    require(a.path("write").isObject()&&a.path("write").size()==1&&a.path("write").has("$step"),"AI_CAPABILITY_BLOCKED: 验证必须绑定写步骤");
+                    if("product".equals(a.path("kind").asText())){require(text(a,"leftColumn").matches("[A-Z]{1,3}")&&text(a,"rightColumn").matches("[A-Z]{1,3}"),"AI_CAPABILITY_BLOCKED: 验证列无效");if(a.has("scale"))require(a.path("scale").isIntegralNumber()&&a.path("scale").asInt()>=0&&a.path("scale").asInt()<=10,"AI_CAPABILITY_BLOCKED: 验证精度无效");}break;
+                default:throw new IllegalArgumentException("AI_CAPABILITY_BLOCKED: 未注册工具 "+tool);
+            }
+            if(Arrays.asList("build_dataset","aggregate_table","join_tables","derive_columns").contains(tool))datasets.add(text(step,"stepId"));
+        }
+    }
+    private static void transport(JsonNode n){WriteManifest.checkTransport(n);}
+    private static void fields(JsonNode n,String... names){require(n.isObject(),"AI_CAPABILITY_BLOCKED: 工具参数必须为对象");Set<String> allowed=new HashSet<>(Arrays.asList(names));n.fieldNames().forEachRemaining(k->require(allowed.contains(k),"AI_CAPABILITY_BLOCKED: 非契约参数 "+k));}
+    private static void strings(JsonNode n){require(n.isArray(),"AI_CAPABILITY_BLOCKED: 字段列表必须为数组");for(JsonNode v:n)require(v.isTextual()&&!v.asText().trim().isEmpty(),"AI_CAPABILITY_BLOCKED: 字段名无效");}
+    private static void datasetRef(JsonNode n,Set<String> known){require(n.isObject()&&n.size()==1&&known.contains(n.path("$step").asText()),"AI_CAPABILITY_BLOCKED: 数据集必须引用上游数据集步骤");}
+    private static void operand(JsonNode n){fields(n,"field","value");require(n.size()==1&&(n.has("field")||n.has("value")),"AI_CAPABILITY_BLOCKED: 计算操作数无效");if(n.has("field"))text(n,"field");else require(n.path("value").isValueNode(),"AI_CAPABILITY_BLOCKED: 常量必须为标量");}
+    private static void target(JsonNode a,JsonNode snapshot,boolean range){JsonNode s=AgentTools.sheet(snapshot,text(a,"sheetId"));if(range){int[] r=AgentTools.range(text(a,"range"));require(r[2]<s.path("rowCount").asInt()&&r[3]<s.path("columnCount").asInt(),"AI_CAPABILITY_BLOCKED: 工具区域超出Sheet");}}
     public static void validate(JsonNode plan) {
         JsonNode steps = plan.path("steps");
         require(steps.isArray() && steps.size() > 0 && steps.size() <= 12, "计划必须包含1至12个步骤");
@@ -71,18 +109,20 @@ public final class AgentPlan {
     }
     private static void verifyCoverage(JsonNode write,JsonNode verify) {
         JsonNode args=write.path("inputBindings");String kind=text(verify,"kind");
-        require(Arrays.asList("non_empty","product").contains(kind),"RESULT_UNKNOWN: 未注册结果验证规则");
+        require(Arrays.asList("non_empty","product","matches_write").contains(kind),"RESULT_UNKNOWN: 未注册结果验证规则");
         if("write_result".equals(write.path("tool").asText())) verifyTarget(args,verify,false);
         else {
             require(args.path("actions").isArray()&&args.path("actions").size()>0,"RESULT_UNKNOWN: 缺少可验证的写动作");
             for(JsonNode action:args.path("actions")) {
-                String type=text(action,"type");require(Arrays.asList("setCell","setValues","setFormula").contains(type),"RESULT_UNKNOWN: 此动作尚无可信业务验证规则");
+                String type=text(action,"type");require(Arrays.asList("setCell","setValues","setCellForCell","clearRange","setFormula").contains(type),"RESULT_UNKNOWN: 此动作尚无可信业务验证规则");
+                if("clearRange".equals(type)||action.has("value")&&containsEmptyValue(action.path("value"))||action.has("values")&&containsEmptyValue(action.path("values")))require("matches_write".equals(kind),"RESULT_UNKNOWN: 清除/空值必须对照已保存变更验证");
                 boolean formula="setFormula".equals(type)||containsFormula(action.path("values"));
                 verifyTarget(action,verify,formula);
             }
         }
     }
     private static boolean containsFormula(JsonNode n) { if(n.isTextual())return n.asText().startsWith("=");if(n.isContainerNode())for(JsonNode child:n)if(containsFormula(child))return true;return false; }
+    private static boolean containsEmptyValue(JsonNode n){if(n.isNull()||n.isTextual()&&n.asText().isEmpty())return true;if(n.isArray())for(JsonNode child:n)if(containsEmptyValue(child))return true;return false;}
     private static void verifyTarget(JsonNode write,JsonNode verify,boolean formula) {
         JsonNode target=write.has("target")?write.path("target"):write;
         require(text(target,"sheetId").equals(text(verify,"sheetId")),"RESULT_UNKNOWN: 验证 Sheet 与写入目标不一致");
