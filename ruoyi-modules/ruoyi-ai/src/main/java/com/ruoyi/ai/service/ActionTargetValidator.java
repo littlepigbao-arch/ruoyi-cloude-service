@@ -14,11 +14,14 @@ public final class ActionTargetValidator {
         check(action != null && context != null, "动作或工作簿上下文缺失");
         String version = action.getSchemaVersion();
         check(!present(version) || "1.0".equals(version) || "2.0".equals(version), "不支持的动作协议版本");
+        boolean b5Format=Arrays.asList("setStyle","setRowHeight","setColumnWidth").contains(action.getType());
+        if(b5Format)check("2.0".equals(version)&&action.getTarget()!=null&&present(action.getTarget().getSheetId()),"B5 格式动作必须显式指定 V2 target.sheetId");
         boolean v2 = "2.0".equals(version) || (!present(version) && action.getTarget() != null);
         Action.Target target = action.getTarget();
         String id = target != null && present(target.getSheetId()) ? target.getSheetId() : action.getSheetId();
         String name = target != null && present(target.getSheetName()) ? target.getSheetName() : action.getSheetName();
         String range = target != null && present(target.getRange()) ? target.getRange() : action.getRange();
+        if(b5Format)check("setStyle".equals(action.getType())?present(range):!present(range),"B5 格式目标范围无效");
         if (target != null) {
             check(!present(target.getSheetId()) || !present(action.getSheetId()) || target.getSheetId().equals(action.getSheetId()), "Sheet ID 冲突");
             check(!present(target.getSheetName()) || !present(action.getSheetName()) || target.getSheetName().equals(action.getSheetName()), "Sheet 名称冲突");
@@ -40,7 +43,7 @@ public final class ActionTargetValidator {
         }
         check(selected!=null,"目标 Sheet 不存在");
         check(!present(name)||name.equals(selected.getSheetName()),"Sheet ID 与名称冲突");
-        Action.Target normalized=new Action.Target();normalized.setSheetId(selected.getSheetId());normalized.setSheetName(selected.getSheetName());normalized.setRange(range);
-        action.setTarget(normalized);action.setSheetId(null);action.setSheetName(null);action.setRange(range);action.setSchemaVersion("2.0");
+        Action.Target normalized=new Action.Target();normalized.setSheetId(selected.getSheetId());normalized.setSheetName(b5Format?null:selected.getSheetName());normalized.setRange(b5Format&&!"setStyle".equals(action.getType())?null:range);
+        action.setTarget(normalized);action.setSheetId(null);action.setSheetName(null);action.setRange(b5Format?null:range);action.setSchemaVersion("2.0");
     }
 }

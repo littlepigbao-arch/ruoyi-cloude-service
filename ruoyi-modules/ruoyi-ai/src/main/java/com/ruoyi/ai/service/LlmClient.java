@@ -75,7 +75,7 @@ public class LlmClient
     {
         if (apiKey == null || apiKey.trim().isEmpty())
         {
-            throw new LlmUnavailableException("AI_API_KEY 未配置，请设置环境变量 AI_API_KEY");
+            throw new LlmUnavailableException("ai.model.api-key 未配置");
         }
 
         String body;

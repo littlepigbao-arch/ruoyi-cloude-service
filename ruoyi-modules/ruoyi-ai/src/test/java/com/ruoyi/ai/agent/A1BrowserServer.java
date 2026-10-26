@@ -24,21 +24,37 @@ public class A1BrowserServer {
     private ControlledWriteService controlled;
     private final boolean b2=Boolean.getBoolean("b2.controlled");
     private final boolean b4=Boolean.getBoolean("b4.controlled");
+    private final boolean b5=Boolean.getBoolean("b5.controlled");
+    private JsonNode b5Baselines;
     private JsonNode fixtureActions=arr();
     private String seedSnapshot;
     private final String serverToken=System.getProperty("a1.serverToken","missing");
     private A1BrowserServer()throws Exception{
         f=new A1TestFixture();staticRoot=Paths.get(System.getProperty("a1.static")).toAbsolutePath().normalize();
-        if(Boolean.getBoolean("b1.controlled")||b2){controlled=new ControlledWriteService(new AgentStore(f.db),f.guard,f.workbooks,f.versions,f.tx.getTransactionManager());A1TestFixture.inject(controlled,"enabled",true);A1TestFixture.inject(f.runs,"controlled",controlled);}
+        if(Boolean.getBoolean("b1.controlled")||b2||b5){
+            controlled=b5?new ControlledWriteService(new AgentStore(f.db),f.guard,f.workbooks,f.versions,f.tx.getTransactionManager()){
+                @Override boolean b5FormatOpen(){return true;}
+            }:new ControlledWriteService(new AgentStore(f.db),f.guard,f.workbooks,f.versions,f.tx.getTransactionManager());
+            if(b5){java.lang.reflect.Field flag=ControlledWriteService.class.getDeclaredField("enabled");flag.setAccessible(true);flag.set(controlled,true);}
+            else A1TestFixture.inject(controlled,"enabled",true);
+            A1TestFixture.inject(f.runs,"controlled",controlled);
+        }
         if(b2){A1TestFixture.inject(f.guard,"enabled",true);A1TestFixture.inject(f.runs,"timeoutMs",900000L);}
-        seedSnapshot="{\"id\":\"a1-browser\",\"name\":\"A1 isolated\",\"sheetOrder\":[\"orders\",\"arrivals\"],\"sheets\":{\"orders\":{\"id\":\"orders\",\"name\":\"Orders\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{\"0\":{\"0\":{\"v\":\"initial\",\"t\":1}}}},\"arrivals\":{\"id\":\"arrivals\",\"name\":\"Arrivals\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{}}}}";workbook=f.seed(seedSnapshot);
+        seedSnapshot="{\"id\":\"a1-browser\",\"name\":\"A1 isolated\",\"sheetOrder\":[\"orders\",\"arrivals\"],\"sheets\":{\"orders\":{\"id\":\"orders\",\"name\":\"Orders\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{\"0\":{\"0\":{\"v\":\"initial\",\"t\":1}}}},\"arrivals\":{\"id\":\"arrivals\",\"name\":\"Arrivals\",\"rowCount\":100,\"columnCount\":26,\"cellData\":{}}}}";
+        if(b5){b5Baselines=parse(new String(Files.readAllBytes(Paths.get(System.getProperty("b5.baselines"))),java.nio.charset.StandardCharsets.UTF_8));
+            require(b5Baselines.isObject()&&b5Baselines.path("setStyle").isObject()&&b5Baselines.path("setRowHeight").isObject()&&b5Baselines.path("setColumnWidth").isObject(),"B5 browser baselines missing");
+            seedSnapshot=b5Baselines.path("setStyle").toString();}
+        workbook=f.seed(seedSnapshot);
     }
     private void send(HttpExchange x,Object value)throws Exception {byte[] bytes=json.writeValueAsBytes(value);x.getResponseHeaders().set("Content-Type","application/json;charset=utf-8");x.sendResponseHeaders(200,bytes.length);x.getResponseBody().write(bytes);x.close();}
     private void handle(HttpExchange x)throws IOException {
         try {
             f.identity();String uri=x.getRequestURI().getPath();
             if(uri.equals("/test/state")){long requested=workbook;String q=x.getRequestURI().getQuery();if(b2&&q!=null&&q.startsWith("workbookId="))requested=Long.parseLong(q.substring(11));Map<String,Object> state=new HashMap<>();state.put("serverToken",serverToken);state.put("workbookId",requested);state.put("runId",runId);state.put("status",f.status(requested));send(x,state);return;}
-            if(b2&&uri.equals("/test/new-workbook")){send(x,obj().put("workbookId",f.seed(seedSnapshot)));return;}
+            if(b2&&uri.equals("/test/new-workbook")){String selected=seedSnapshot;
+                if(b5){String q=x.getRequestURI().getQuery(),type=q!=null&&q.startsWith("type=")?q.substring(5):"";
+                    require(Arrays.asList("setStyle","setRowHeight","setColumnWidth").contains(type),"B5 browser type invalid");selected=b5Baselines.path(type).toString();}
+                send(x,obj().put("workbookId",f.seed(selected)));return;}
             if(b2&&uri.equals("/test/chat-actions")){fixtureActions=json.readTree(x.getRequestBody());send(x,obj().put("ok",true));return;}
             if(b2&&uri.equals("/test/external-draft")){JsonNode req=json.readTree(x.getRequestBody());long id=req.path("workbookId").asLong();ObjectNode snapshot=(ObjectNode)parse(String.valueOf(f.status(id).get("content")));((ObjectNode)snapshot.path("sheets").path("orders").path("cellData").path("0").path("0")).put("v","external-conflict");String content=snapshot.toString();f.db.update("update ai_workbook_working_state set draft_snapshot=?,content_hash=?,version=version+1 where workbook_id=? and owner_user_id=1",content.getBytes(java.nio.charset.StandardCharsets.UTF_8),com.ruoyi.ai.util.ContentHashUtils.sha256(content),id);send(x,obj().put("ok",true));return;}
             if(uri.equals("/test/run")){seedRun();send(x,obj().put("runId",runId));return;}

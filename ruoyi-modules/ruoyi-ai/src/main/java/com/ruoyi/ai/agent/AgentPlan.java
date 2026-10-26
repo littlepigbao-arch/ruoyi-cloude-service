@@ -27,11 +27,24 @@ public final class AgentPlan {
         "每个写步骤之后必须显式verify_result绑定写步骤，check_data_quality仅验证上游数据，不能代替写后验证；acceptanceCriteria应覆盖所有步骤且不允许自然语言断言。" +
         "业务规则不清楚或需覆盖已有数据且用户未授权时先question，不得使用confirmed。金额使用十进制与HALF_UP,负值不得静默归零。";
 
+    public static String contract(boolean formatOpen) {
+        if(!formatOpen)return CONTRACT;
+        return CONTRACT.replace("公式、样式、筛选和结构写入不支持","公式、筛选和结构写入不支持")
+            .replace("kind:'matches_write'或'non_empty'或'product'","kind:'matches_write'或'non_empty'或'product'或'matches_format'")
+            +"B5 格式写入只允许单独一个 apply_actions 动作，overwrite:'confirmed'且用户已授权完整影响范围；必须跟随 verify_result kind:'matches_format'、write:{$step:'写步骤ID'}，sheetId 与范围精确覆盖目标。"
+            +"setStyle 仅单格 background:'#rrggbb'，target:{sheetId,range}；setRowHeight 使用 target:{sheetId},rowPosition 从1计数,height 20-400 且须高于当前及默认行高；setColumnWidth 使用 target:{sheetId},columnPosition 从1计数,width 40-800。"
+            +"B5 每个格式动作必须包含 schemaVersion:\"2.0\"；不要省略 target 或改用顶层 sheetId/range。示例写步骤 W 的 actions 仅含 {\"schemaVersion\":\"2.0\",\"type\":\"setStyle\",\"target\":{\"sheetId\":\"s\",\"range\":\"A1\"},\"background\":\"#223344\"}；对应验证步骤必须依赖 W，inputBindings 为 {\"write\":{\"$step\":\"W\"},\"sheetId\":\"s\",\"range\":\"A1\",\"kind\":\"matches_format\"}。"
+            +"尺寸作用于整行或整列，最多1000格；不支持其他样式属性、公式、筛选或结构修改。保存后的可信格式补丁与权威快照一致才可认为验证通过。";
+    }
+
     private AgentPlan() { }
     /** B3: whole-plan admission is pure and happens before any tool call or artifact is created. */
     public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled) {
-        transport(plan);validate(plan);
-        Set<String> datasets=new HashSet<>();
+        validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,false);
+    }
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen) {
+        transport(plan);validate(plan,formatOpen);
+        Set<String> datasets=new HashSet<>();Map<String,JsonNode> formatPatches=new HashMap<>();
         for(JsonNode step:plan.path("steps")){
             transport(step);String tool=text(step,"tool");JsonNode a=step.path("inputBindings");transport(a);
             require(!"write_result".equals(tool),"AI_CAPABILITY_BLOCKED: write_result 尚未迁移至受控链路");
@@ -50,11 +63,13 @@ public final class AgentPlan {
                 case "check_data_quality":fields(a,"dataset","required","unique","nonNegative","failOnViolation");datasetRef(a.path("dataset"),datasets);int count=0;for(String k:Arrays.asList("required","unique","nonNegative"))if(a.has(k)){strings(a.path(k));count+=a.path(k).size();}require(count>0&&(!a.has("failOnViolation")||a.path("failOnViolation").isBoolean()),"AI_CAPABILITY_BLOCKED: 质量规则无效");break;
                 case "apply_actions":
                     fields(a,"overwrite","actions","transportVersion");require(controlled,"CONTROLLED_DISABLED: 受控写入入口未开启");
-                    require("controlled-values".equals(WriteManifest.classify(a.path("actions"))),"AI_CAPABILITY_BLOCKED: apply_actions 仅支持受控标量写入");
-                    WriteManifest.create(snapshot,a.path("actions"),scopes,activeSheet,text(a,"overwrite"),overwrite);break;
+                    require("controlled-values".equals(WriteManifest.classify(a.path("actions"),formatOpen)),"AI_CAPABILITY_BLOCKED: apply_actions 仅支持受控写入");
+                    if(WriteManifest.isB5FormatGroup(a.path("actions"))){require("confirmed".equals(text(a,"overwrite"))&&overwrite,"WRITE_POLICY_DENIED: 格式覆盖必须明确授权");formatPatches.put(text(step,"stepId"),WriteManifest.previewB5Format(snapshot,a.path("actions").get(0),scopes).path("patch"));}
+                    else WriteManifest.create(snapshot,a.path("actions"),scopes,activeSheet,text(a,"overwrite"),overwrite);break;
                 case "verify_result":
                     fields(a,"write","sheetId","range","kind","leftColumn","rightColumn","scale");target(a,snapshot,true);
                     require(a.path("write").isObject()&&a.path("write").size()==1&&a.path("write").has("$step"),"AI_CAPABILITY_BLOCKED: 验证必须绑定写步骤");
+                    JsonNode patch=formatPatches.get(a.path("write").path("$step").asText());if(patch!=null){int[] actual=AgentTools.range(text(a,"range"));require("matches_format".equals(a.path("kind").asText())&&text(a,"sheetId").equals(patch.path("sheetId").asText())&&actual[0]==patch.path("startRow").asInt(-1)&&actual[1]==patch.path("startColumn").asInt(-1)&&actual[2]==patch.path("endRow").asInt(-1)&&actual[3]==patch.path("endColumn").asInt(-1),"RESULT_UNKNOWN: B5 验证必须精确覆盖完整影响范围");}
                     if("product".equals(a.path("kind").asText())){require(text(a,"leftColumn").matches("[A-Z]{1,3}")&&text(a,"rightColumn").matches("[A-Z]{1,3}"),"AI_CAPABILITY_BLOCKED: 验证列无效");if(a.has("scale"))require(a.path("scale").isIntegralNumber()&&a.path("scale").asInt()>=0&&a.path("scale").asInt()<=10,"AI_CAPABILITY_BLOCKED: 验证精度无效");}break;
                 default:throw new IllegalArgumentException("AI_CAPABILITY_BLOCKED: 未注册工具 "+tool);
             }
@@ -67,7 +82,8 @@ public final class AgentPlan {
     private static void datasetRef(JsonNode n,Set<String> known){require(n.isObject()&&n.size()==1&&known.contains(n.path("$step").asText()),"AI_CAPABILITY_BLOCKED: 数据集必须引用上游数据集步骤");}
     private static void operand(JsonNode n){fields(n,"field","value");require(n.size()==1&&(n.has("field")||n.has("value")),"AI_CAPABILITY_BLOCKED: 计算操作数无效");if(n.has("field"))text(n,"field");else require(n.path("value").isValueNode(),"AI_CAPABILITY_BLOCKED: 常量必须为标量");}
     private static void target(JsonNode a,JsonNode snapshot,boolean range){JsonNode s=AgentTools.sheet(snapshot,text(a,"sheetId"));if(range){int[] r=AgentTools.range(text(a,"range"));require(r[2]<s.path("rowCount").asInt()&&r[3]<s.path("columnCount").asInt(),"AI_CAPABILITY_BLOCKED: 工具区域超出Sheet");}}
-    public static void validate(JsonNode plan) {
+    public static void validate(JsonNode plan) { validate(plan,false); }
+    public static void validate(JsonNode plan,boolean formatOpen) {
         JsonNode steps = plan.path("steps");
         require(steps.isArray() && steps.size() > 0 && steps.size() <= 12, "计划必须包含1至12个步骤");
         Set<String> known = new HashSet<>();
@@ -89,7 +105,7 @@ public final class AgentPlan {
             if ("verify_result".equals(tool) && !writes.isEmpty()) {
                 JsonNode input=step.path("inputBindings");String writeId=input.path("write").path("$step").asText();
                 require(deps.contains(writeId)&&writes.containsKey(writeId),"RESULT_UNKNOWN: 结果验证必须显式引用所验证的写步骤");
-                verifyCoverage(writes.get(writeId),input);verified.add(writeId);
+                verifyCoverage(writes.get(writeId),input,formatOpen);verified.add(writeId);
             }
             known.add(id);
         }
@@ -107,12 +123,14 @@ public final class AgentPlan {
         if (n.isObject() && n.has("$step")) require(deps.contains(n.path("$step").asText()) && n.size() == 1, "上游引用必须声明依赖");
         else if (n.isContainerNode()) for (JsonNode child : n) checkRefs(child, deps);
     }
-    private static void verifyCoverage(JsonNode write,JsonNode verify) {
+    private static void verifyCoverage(JsonNode write,JsonNode verify,boolean formatOpen) {
         JsonNode args=write.path("inputBindings");String kind=text(verify,"kind");
-        require(Arrays.asList("non_empty","product","matches_write").contains(kind),"RESULT_UNKNOWN: 未注册结果验证规则");
+        require(Arrays.asList("non_empty","product","matches_write","matches_format").contains(kind),"RESULT_UNKNOWN: 未注册结果验证规则");
         if("write_result".equals(write.path("tool").asText())) verifyTarget(args,verify,false);
         else {
             require(args.path("actions").isArray()&&args.path("actions").size()>0,"RESULT_UNKNOWN: 缺少可验证的写动作");
+            if(WriteManifest.isB5FormatGroup(args.path("actions"))){require(formatOpen&&"matches_format".equals(kind),"RESULT_UNKNOWN: B5 格式写入尚无可信验证规则");JsonNode action=args.path("actions").get(0);require(text(action.path("target"),"sheetId").equals(text(verify,"sheetId")),"RESULT_UNKNOWN: B5 验证 Sheet 不一致");if("setStyle".equals(action.path("type").asText()))require(text(action.path("target"),"range").equals(text(verify,"range")),"RESULT_UNKNOWN: B5 单格验证范围不一致");return;}
+            require(!"matches_format".equals(kind),"RESULT_UNKNOWN: 标量写入不能使用格式验证");
             for(JsonNode action:args.path("actions")) {
                 String type=text(action,"type");require(Arrays.asList("setCell","setValues","setCellForCell","clearRange","setFormula").contains(type),"RESULT_UNKNOWN: 此动作尚无可信业务验证规则");
                 if("clearRange".equals(type)||action.has("value")&&containsEmptyValue(action.path("value"))||action.has("values")&&containsEmptyValue(action.path("values")))require("matches_write".equals(kind),"RESULT_UNKNOWN: 清除/空值必须对照已保存变更验证");

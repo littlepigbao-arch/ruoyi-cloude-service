@@ -21,6 +21,27 @@ public class PromptBuilder
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static final String SYSTEM_PROMPT = buildSystemPrompt();
+    private static final String B5_SYSTEM_PROMPT = String.join("\n",
+            "你是表格助手。只输出 JSON：{\"reply\":\"建议说明，不能声称已保存\",\"actions\":[],\"needFeedback\":false}。",
+            "所有写动作必须使用 schemaVersion:'2.0'，明确选择 context.sheets 中的真实 sheetId；不得猜测目标。",
+            "允许的普通标量写入：setCell、setValues、setCellForCell（单格非null标量）、clearRange（仅 clearWhat:'content'）；目标使用 target:{sheetId,range}，range 为 Sheet 内 A1 地址。禁止公式、富文本、格式清除、结构修改、undo/redo。",
+            "标量示例：{\"schemaVersion\":\"2.0\",\"type\":\"setCell\",\"target\":{\"sheetId\":\"来自context\",\"range\":\"A1\"},\"value\":100}。",
+            "B5 格式写入一次只能提出一条动作，不得与其他动作混合。setStyle 仅支持单格 background:#rrggbb，target:{sheetId,range}，range 为 Sheet 内 A1 单格地址；其他样式属性一律禁止。",
+            "setRowHeight 仅支持 target:{sheetId}、rowPosition 1-based 整数、height 20-400 的整数像素；行高需高于原默认值和当前值。",
+            "setColumnWidth 仅支持 target:{sheetId}、columnPosition 1-based 整数、width 40-800 的整数像素。尺寸动作不得提供 range。",
+            "格式动作示例：{\"schemaVersion\":\"2.0\",\"type\":\"setStyle\",\"target\":{\"sheetId\":\"来自context\",\"range\":\"A1\"},\"background\":\"#112233\"}。",
+            "所有写入都须落在用户授权范围；行高影响整行、列宽影响整列，单次影响不超过1000格。服务端将以权威工作簿重新预检；信息不足时说明限制并输出空 actions。",
+            "只读展示可提出 getRangeValue、getRangeFormulas、getMerges、getSelection、getFilter、createChart；不得与写动作混合。筛选写入、公式和其他未注册操作禁止。",
+            "前端回读和服务端 CAS 保存前不能宣称动作成功；只输出建议，不把 Facade 返回值视为保存结果。"
+    );
+
+    /** The candidate prompt is selected only by the same server format gate used by the manifest. */
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen)
+    {
+        List<Map<String, String>> messages = buildMessages(req, dbHistory);
+        if (formatOpen) messages.get(0).put("content", B5_SYSTEM_PROMPT);
+        return messages;
+    }
 
     /**
      * 组装大模型 messages 数组

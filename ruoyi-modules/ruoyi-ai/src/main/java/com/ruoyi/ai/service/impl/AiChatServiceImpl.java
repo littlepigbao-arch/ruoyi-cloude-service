@@ -139,7 +139,7 @@ public class AiChatServiceImpl implements AiChatService
         List<Map<String, String>> messages;
         try
         {
-            messages = promptBuilder.buildMessages(req, dbHistory);
+            messages = promptBuilder.buildMessages(req, dbHistory, controlledWrites.formatActionsEnabled());
         }
         catch (Exception e)
         {
@@ -182,14 +182,14 @@ public class AiChatServiceImpl implements AiChatService
         }
 
         chatResp.setConversationId(conversationId);
-        try { normalizeActionTargets(chatResp, req); }
-        catch (IllegalArgumentException invalidTarget) { return R.fail(422, invalidTarget.getMessage()); }
         String executionMode;
         try {
             executionMode = com.ruoyi.ai.agent.WriteManifest.checkChatTransport(
                 mapper.valueToTree(chatResp.getActions()==null?java.util.Collections.emptyList():chatResp.getActions()),
-                mapper.valueToTree(req.getClientMeta()), controlledWrites.enabled());
+                mapper.valueToTree(req.getClientMeta()), controlledWrites.enabled(), controlledWrites.formatActionsEnabled());
         } catch (IllegalArgumentException unsupported) { return R.fail(409, unsupported.getMessage()); }
+        try { normalizeActionTargets(chatResp, req); }
+        catch (IllegalArgumentException invalidTarget) { return R.fail(422, invalidTarget.getMessage()); }
 
         // 7. 持久化助手消息（含 actions JSON 字符串）
         AiMessage assistantMsg = new AiMessage();

@@ -251,6 +251,7 @@ public class Action
     public String getSeriesName() { return seriesName; }
     public void setSeriesName(String seriesName) { this.seriesName = seriesName; }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class Target
     {
         private String sheetId;

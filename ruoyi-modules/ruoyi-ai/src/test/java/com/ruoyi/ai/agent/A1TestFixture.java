@@ -15,7 +15,7 @@ import java.lang.reflect.Field;
 import java.util.*;
 import static com.ruoyi.ai.agent.AgentJson.*;
 
-/** Test-only wiring. Refuses any database except the fresh local A1 instance. */
+/** Test-only wiring. Refuses every database outside the explicit local A1/B5 targets. */
 public class A1TestFixture {
     public final JdbcTemplate db;
     public final AiWorkbookMapper workbooks;
@@ -40,10 +40,10 @@ public class A1TestFixture {
             Files.write(Paths.get(System.getProperty("a1.classpath.output")),String.join(java.io.File.pathSeparator,entries).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
         String url=System.getProperty("a1.mysql.url", "");
-        if(!url.startsWith("jdbc:mysql://127.0.0.1:33357/a1_isolated?"))throw new IllegalStateException("Explicit isolated A1 MySQL URL is required");
+        String expectedDataDir=expectedIsolatedDataDir(url);
         DriverManagerDataSource ds=new DriverManagerDataSource(url,"root","");ds.setDriverClassName("com.mysql.cj.jdbc.Driver");db=new JdbcTemplate(ds);
         String dataDir=db.queryForObject("select @@datadir",String.class).replace('\\','/');
-        if(!dataDir.equalsIgnoreCase("D:/Code/agentReport/a1-output-20261014/mysql-data/"))throw new IllegalStateException("Refusing non-isolated database directory");
+        if(!dataDir.equalsIgnoreCase(expectedDataDir))throw new IllegalStateException("Refusing non-isolated database directory");
         Path base=Paths.get(System.getProperty("a1.module",System.getProperty("basedir",".")));
         String ddl=new String(Files.readAllBytes(base.resolve("sql/ai_workbook_20260824.sql")),java.nio.charset.StandardCharsets.UTF_8);
         ddl=ddl.substring(ddl.indexOf("CREATE TABLE ai_workbook")).replace("CREATE TABLE ai_workbook", "CREATE TABLE IF NOT EXISTS ai_workbook");
@@ -61,6 +61,11 @@ public class A1TestFixture {
         DataSourceTransactionManager manager=new DataSourceTransactionManager(ds);tx=new TransactionTemplate(manager);
         tx.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
         AgentStore store=new AgentStore(db);runs=new AgentRunService(store,guard,new AgentTools(store),workbooks,versions,null,manager);
+    }
+    static String expectedIsolatedDataDir(String url){
+        if(url.startsWith("jdbc:mysql://127.0.0.1:33357/a1_isolated?"))return "D:/Code/agentReport/a1-output-20261014/mysql-data/";
+        if(url.startsWith("jdbc:mysql://127.0.0.1:33359/b5_isolated?"))return "D:/Code/agentReport/b5-db-20261024/mysql-data/";
+        throw new IllegalStateException("Explicit isolated A1 or B5 MySQL URL is required");
     }
     private void executeSql(String ddl){for(String sql:ddl.replaceAll("(?m)^--.*$","").split(";"))if(!sql.trim().isEmpty())db.execute(sql);}
     public static void inject(Object object,String field,Object value)throws Exception{Field f=object.getClass().getDeclaredField(field);f.setAccessible(true);f.set(object,value);}

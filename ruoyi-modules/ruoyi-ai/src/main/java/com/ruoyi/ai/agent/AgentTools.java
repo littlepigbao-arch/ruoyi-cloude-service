@@ -189,7 +189,7 @@ public class AgentTools {
         }}}
         require(!a.path("failOnViolation").asBoolean(true)||errors==0,"数据质量验证失败，共"+errors+"项");ObjectNode result=obj().put("errors",errors).put("checkedRows",d.path("rows").size());result.set("examples",examples);return result;
     }
-    public static ObjectNode verify(JsonNode snapshot,JsonNode a){JsonNode s=sheet(snapshot,text(a,"sheetId"));int[] r=range(text(a,"range"));String kind=text(a,"kind");require(Arrays.asList("non_empty","product","matches_write").contains(kind),"未注册验证规则");int checked=0;
+    public static ObjectNode verify(JsonNode snapshot,JsonNode a){JsonNode s=sheet(snapshot,text(a,"sheetId"));int[] r=range(text(a,"range"));String kind=text(a,"kind");require(Arrays.asList("non_empty","product","matches_write","matches_format").contains(kind),"未注册验证规则");if("matches_format".equals(kind))return verifyFormat(snapshot,a,s,r);int checked=0;
         if("matches_write".equals(kind)){
             JsonNode write=a.path("write"),patches=write.path("executedChange").path("cells");
             require(WriteManifest.isControlledTransport(write.path("transportVersion"))&&"SAVED".equals(write.path("persistenceStatus").asText())&&"PASSED".equals(write.path("validation").asText())&&"controlled-values".equals(write.path("executedChange").path("kind").asText()),"RESULT_UNKNOWN: 缺少可信已保存受控变更");
@@ -210,6 +210,16 @@ public class AgentTools {
         for(int row=r[0];row<=r[2];row++){if("product".equals(kind)&&!effectiveRows.contains(row))continue;for(int c=r[1];c<=r[3];c++){JsonNode v=value(s,row,c);require(!v.isNull()&&!v.asText().isEmpty(),"结果缺失于行"+(row+1));
             if("product".equals(kind)){String lc=text(a,"leftColumn"),rc=text(a,"rightColumn");int scale=a.path("scale").asInt(2);require(scale>=0&&scale<=10,"精度无效");BigDecimal expected=decimal(value(s,row,col(lc))).multiply(decimal(value(s,row,col(rc)))).setScale(scale,RoundingMode.HALF_UP);require(decimal(v).setScale(scale,RoundingMode.HALF_UP).compareTo(expected)==0,"金额验证失败于行"+(row+1));}checked++;}}
         return obj().put("passed",true).put("checkedCells",checked).put("method","independent-decimal-evaluation");
+    }
+    private static ObjectNode verifyFormat(JsonNode snapshot,JsonNode a,JsonNode sheet,int[] range){JsonNode write=a.path("write"),change=write.path("executedChange"),patch=change.path("formatPatch");String savedHash=hash(snapshot),callId=text(write,"callId");
+        require(WriteManifest.isControlledTransport(write.path("transportVersion"))&&"SAVED".equals(write.path("persistenceStatus").asText())&&"PASSED".equals(write.path("validation").asText())&&"controlled-format".equals(change.path("kind").asText())&&callId.equals(change.path("operationId").asText())&&savedHash.equals(write.path("loadedRevision").asText())&&savedHash.equals(write.path("sourceRevision").asText())&&savedHash.equals(change.path("afterHash").asText()),"RESULT_UNKNOWN: 缺少可信已保存格式变更");
+        require(patch.isObject()&&text(patch,"sheetId").equals(text(a,"sheetId"))&&WriteManifest.sameIntegral(patch.path("startRow"),range[0])&&WriteManifest.sameIntegral(patch.path("startColumn"),range[1])&&WriteManifest.sameIntegral(patch.path("endRow"),range[2])&&WriteManifest.sameIntegral(patch.path("endColumn"),range[3]),"RESULT_UNKNOWN: B5 保存补丁与完整验证范围不一致");
+        String type=text(patch,"type");JsonNode expected=patch.path("value"),actual;
+        if("setStyle".equals(type)){require(range[0]==range[2]&&range[1]==range[3]&&WriteManifest.sameIntegral(patch.path("row"),range[0])&&WriteManifest.sameIntegral(patch.path("column"),range[1])&&expected.isTextual()&&expected.asText().matches("#[0-9a-f]{6}"),"RESULT_UNKNOWN: B5 样式补丁无效");actual=cell(sheet,range[0],range[1]).path("s").path("bg").path("rgb");}
+        else if("setRowHeight".equals(type)){require(range[0]==range[2]&&WriteManifest.sameIntegral(patch.path("index"),range[0])&&expected.isIntegralNumber(),"RESULT_UNKNOWN: B5 行高补丁无效");JsonNode row=sheet.path("rowData").path(String.valueOf(range[0]));require(WriteManifest.sameIntegral(row.path("ia"),0),"RESULT_UNKNOWN: B5 行高自动适应状态不符");actual=row.path("h");}
+        else if("setColumnWidth".equals(type)){require(range[1]==range[3]&&WriteManifest.sameIntegral(patch.path("index"),range[1])&&expected.isIntegralNumber(),"RESULT_UNKNOWN: B5 列宽补丁无效");actual=sheet.path("columnData").path(String.valueOf(range[1])).path("w");}
+        else throw new IllegalArgumentException("RESULT_UNKNOWN: B5 格式类型未注册");
+        require(actual.equals(expected),"RESULT_UNKNOWN: B5 已保存格式与可信补丁不符");return obj().put("passed",true).put("checkedCells",(range[2]-range[0]+1)*(range[3]-range[1]+1)).put("method","saved-controlled-format-comparison");
     }
     /** Produce an exact, bounded write proposal; verification compares the persisted snapshot to it. */
     public ObjectNode prepareWrite(ObjectNode run,String tool,JsonNode args,JsonNode snapshot) {
