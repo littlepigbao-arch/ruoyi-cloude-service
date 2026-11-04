@@ -1,0 +1,26 @@
+package com.ruoyi.ai.agent;
+import com.fasterxml.jackson.databind.node.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.*;
+import junit.framework.TestCase;
+import static com.ruoyi.ai.agent.AgentJson.*;
+public class B10SumAliasMysqlTest extends TestCase {
+    private A1TestFixture f;private ControlledWriteService service;private long book;
+    protected void setUp()throws Exception{f=new A1TestFixture();book=f.seed(B10SumAliasTest.snapshot().toString());service=new ControlledWriteService(new AgentStore(f.db),f.guard,f.workbooks,f.versions,f.tx.getTransactionManager());A1TestFixture.inject(service,"enabled",true);A1TestFixture.inject(service,"b7FormulaEnabled",true);}
+    protected void tearDown(){f.close();}
+    private ObjectNode request(){ObjectNode ws=f.runs.workspace(book,1),r=obj().put("requestId",UUID.randomUUID().toString()).put("workbookId",book).put("branchId",ws.path("branchId").asLong()).put("loadedRevision",ws.path("loadedRevision").asText()).put("expectedDraftVersion",ws.path("draftVersion").asLong()).put("expectedBranchVersion",ws.path("branchVersion").asLong()).put("activeSheetId","s").put("overwrite","confirmed");r.set("writeScopes",arr().add(obj().put("sheetId","s").put("range","C1")));r.set("actions",arr().add(B10SumAliasTest.action()));return r;}
+    private ObjectNode claim(ObjectNode r){return service.claim(r.path("runId").asText(),1,obj().put("transportVersion",2).put("clientId","sum-test").put("fencingToken",r.path("fencingToken").asLong()));}
+    private ObjectNode receipt(ObjectNode m){ObjectNode r=obj().put("transportVersion",2).put("callId",m.path("callId").asText()).put("claimToken",m.path("claimToken").asText()).put("argsHash",m.path("argsHash").asText()).put("fencingToken",m.path("fencingToken").asLong()).put("ok",true);r.set("formulaReadback",m.path("formulaReadback").deepCopy());return r;}
+    private void reject(Runnable run){try{run.run();fail("Unsafe sum accepted");}catch(IllegalArgumentException expected){}}
+    private ObjectNode save(ObjectNode request){ObjectNode r=service.create(request,1),m=claim(r);return service.receipt(r.path("runId").asText(),1,receipt(m));}
+    public void testSavedAliasAuditAndIndependentVerification(){ObjectNode result=save(request());JsonNode saved=parse(String.valueOf(f.status(book).get("content"))),write=result.path("lastControlledResult");assertEquals(14,saved.path("sheets").path("s").path("cellData").path("0").path("2").path("v").asInt());assertEquals("sumToCell",write.path("actions").get(0).path("type").asText());assertTrue(AgentTools.verify(saved,obj().put("sheetId","s").put("range","C1").put("kind","matches_formula").set("write",write)).path("passed").asBoolean());JsonNode actions=parse(f.db.queryForObject("select draft_actions_json from ai_workbook_working_state where workbook_id=?",String.class,book));assertEquals("sumToCell",actions.get(0).path("type").asText());}
+    public void testOldTargetRangeSavesThroughSameCas(){ObjectNode q=request(),a=(ObjectNode)q.path("actions").get(0);a.put("targetRange","C1");((ObjectNode)a.path("target")).remove("range");assertEquals("COMPLETED",save(q).path("status").asText());}
+    public void testExactRequestAndReceiptReplaySaveOnlyOnce(){ObjectNode q=request(),r=service.create(q,1);assertEquals(r.path("runId"),service.create(q,1).path("runId"));ObjectNode m=claim(r),ack=receipt(m);service.receipt(r.path("runId").asText(),1,ack);service.receipt(r.path("runId").asText(),1,ack);assertEquals(0,((Number)((Map<?,?>)f.status(book).get("workingState")).get("version")).intValue());}
+    public void testSameRequestIdDifferentSourceRejects(){ObjectNode q=request();service.create(q,1);((ObjectNode)q.path("actions").get(0)).put("sourceRange","A1:B1");reject(()->service.create(q,1));}
+    public void testForgedCacheNeverSaves(){ObjectNode r=service.create(request(),1),m=claim(r),ack=receipt(m);((ObjectNode)ack.path("formulaReadback").get(0)).put("value",15);reject(()->service.receipt(r.path("runId").asText(),1,ack));assertNull(f.status(book).get("workingState"));}
+    public void testScopeAndOverwriteStillRequired(){ObjectNode q=request();q.set("writeScopes",arr().add(obj().put("sheetId","s").put("range","D1")));reject(()->service.create(q,1));ObjectNode noOverwrite=request().put("overwrite","empty-only");reject(()->service.create(noOverwrite,1));}
+    public void testClosedFormulaGateCreatesNoRun()throws Exception{A1TestFixture.inject(service,"b7FormulaEnabled",false);reject(()->service.create(request(),1));assertEquals(0,f.db.queryForObject("select count(*) from ai_agent_run where workbook_id=?",Integer.class,book).intValue());}
+    public void testStaleLoadedVersionCreatesNoRun(){ObjectNode q=request().put("loadedRevision","stale");reject(()->service.create(q,1));assertEquals(0,f.db.queryForObject("select count(*) from ai_agent_run where workbook_id=?",Integer.class,book).intValue());}
+    public void testWrongOwnerCannotCreate(){ObjectNode q=request();reject(()->service.create(q,2));assertNull(f.status(book).get("workingState"));}
+    public void testChangedFormulaInReceiptRejected(){ObjectNode r=service.create(request(),1),m=claim(r),ack=receipt(m);((ObjectNode)ack.path("formulaReadback").get(0)).put("formula","=SUM(A1:B1)");reject(()->service.receipt(r.path("runId").asText(),1,ack));assertNull(f.status(book).get("workingState"));}
+}

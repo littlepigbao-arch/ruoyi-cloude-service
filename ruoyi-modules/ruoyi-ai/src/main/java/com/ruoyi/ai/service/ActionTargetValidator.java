@@ -15,7 +15,20 @@ public final class ActionTargetValidator {
         String version = action.getSchemaVersion();
         check(!present(version) || "1.0".equals(version) || "2.0".equals(version), "不支持的动作协议版本");
         boolean b5Format=Arrays.asList("setStyle","setRowHeight","setColumnWidth").contains(action.getType());
+        boolean b6Filter=Arrays.asList("setFilter","clearFilter").contains(action.getType());
+        boolean b7Formula=Arrays.asList("setFormula","sumToCell").contains(action.getType());
+        if("sumToCell".equals(action.getType())&&present(action.getTargetRange())){
+            check(action.getTarget()!=null,"B10 sumToCell 必须显式指定 target.sheetId");
+            check(action.getTarget().getRange()==null||action.getTargetRange().equals(action.getTarget().getRange()),"B10 sumToCell 目标范围冲突");
+            action.getTarget().setRange(action.getTargetRange());action.setTargetRange(null);
+        }
+        boolean b8Merge=Arrays.asList("merge","breakApart").contains(action.getType());
+        boolean b8Structure=Arrays.asList("insertRows","deleteRows","insertColumns","deleteColumns","createSheet","renameSheet","copySheet","deleteSheet").contains(action.getType());
         if(b5Format)check("2.0".equals(version)&&action.getTarget()!=null&&present(action.getTarget().getSheetId()),"B5 格式动作必须显式指定 V2 target.sheetId");
+        if(b6Filter)check("2.0".equals(version)&&action.getTarget()!=null&&present(action.getTarget().getSheetId())&&present(action.getTarget().getRange()),"B6 筛选动作必须显式指定 V2 target.sheetId/range");
+        if(b7Formula)check("2.0".equals(version)&&action.getTarget()!=null&&present(action.getTarget().getSheetId())&&present(action.getTarget().getRange()),"B7 公式动作必须显式指定 V2 target.sheetId/range");
+        if(b8Merge)check("2.0".equals(version)&&action.getTarget()!=null&&present(action.getTarget().getSheetId())&&present(action.getTarget().getRange()),"B8b 合并动作必须显式指定 V2 target.sheetId/range");
+        if(b8Structure)check("2.0".equals(version)&&action.getTarget()!=null&&present(action.getTarget().getSheetId())&&!present(action.getTarget().getRange()),"B8c 行列动作必须显式指定 V2 target.sheetId，且不携带 range");
         boolean v2 = "2.0".equals(version) || (!present(version) && action.getTarget() != null);
         Action.Target target = action.getTarget();
         String id = target != null && present(target.getSheetId()) ? target.getSheetId() : action.getSheetId();
@@ -43,7 +56,7 @@ public final class ActionTargetValidator {
         }
         check(selected!=null,"目标 Sheet 不存在");
         check(!present(name)||name.equals(selected.getSheetName()),"Sheet ID 与名称冲突");
-        Action.Target normalized=new Action.Target();normalized.setSheetId(selected.getSheetId());normalized.setSheetName(b5Format?null:selected.getSheetName());normalized.setRange(b5Format&&!"setStyle".equals(action.getType())?null:range);
-        action.setTarget(normalized);action.setSheetId(null);action.setSheetName(null);action.setRange(b5Format?null:range);action.setSchemaVersion("2.0");
+        Action.Target normalized=new Action.Target();normalized.setSheetId(selected.getSheetId());normalized.setSheetName(b5Format||b6Filter||b7Formula||b8Merge||b8Structure?null:selected.getSheetName());normalized.setRange(b8Structure||b5Format&&!"setStyle".equals(action.getType())?null:range);
+        action.setTarget(normalized);action.setSheetId(null);action.setSheetName(null);action.setRange(b5Format||b6Filter||b7Formula||b8Merge||b8Structure?null:range);action.setSchemaVersion("2.0");
     }
 }

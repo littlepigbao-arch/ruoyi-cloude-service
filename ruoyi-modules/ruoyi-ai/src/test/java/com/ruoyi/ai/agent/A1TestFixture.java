@@ -16,7 +16,7 @@ import java.util.*;
 import static com.ruoyi.ai.agent.AgentJson.*;
 
 /** Test-only wiring. Refuses every database outside the explicit local A1/B5 targets. */
-public class A1TestFixture {
+public class A1TestFixture implements AutoCloseable {
     public final JdbcTemplate db;
     public final AiWorkbookMapper workbooks;
     public final WorkbookVersionMapper versions;
@@ -24,7 +24,27 @@ public class A1TestFixture {
     public final WorkbookVersionServiceImpl service;
     public final TransactionTemplate tx;
     public final AgentRunService runs;
-    public A1TestFixture() throws Exception {
+    private SingleConnectionDataSource sharedConnection;
+    private static com.alibaba.druid.pool.DruidDataSource isolatedPool;
+    private static String isolatedPoolUrl;
+    private static synchronized javax.sql.DataSource pooledIsolatedDataSource(String url) {
+        // Validate before opening any connection; production URLs are never accepted by this fixture.
+        expectedIsolatedDataDir(url);
+        if(isolatedPool==null){
+            isolatedPoolUrl=url;
+            isolatedPool=new com.alibaba.druid.pool.DruidDataSource();
+            isolatedPool.setDriverClassName("com.mysql.cj.jdbc.Driver");isolatedPool.setUrl(url);
+            isolatedPool.setUsername("root");isolatedPool.setPassword("");
+            isolatedPool.setInitialSize(0);isolatedPool.setMinIdle(0);isolatedPool.setMaxActive(32);isolatedPool.setMaxWait(10000);
+            Runtime.getRuntime().addShutdownHook(new Thread(()->isolatedPool.close(),"isolated-test-pool-close"));
+        }
+        if(!isolatedPoolUrl.equals(url))throw new IllegalStateException("A test JVM cannot change its isolated pool target");
+        // Each fixture keeps a distinct Spring transaction resource key, including nested fixtures on one thread.
+        return new DelegatingDataSource(isolatedPool);
+    }
+    public A1TestFixture() throws Exception { this(false); }
+    /** Sequential matrix cases may reuse a dedicated connection; concurrent tests keep the default wiring. */
+    public A1TestFixture(boolean reuseConnection) throws Exception {
         if(System.getProperty("a1.classpath.output")!=null){
             Set<String> entries=new LinkedHashSet<>();
             for(Class<?> type:new Class<?>[]{A1TestFixture.class,AgentRunService.class,SecurityContextHolder.class,
@@ -41,7 +61,12 @@ public class A1TestFixture {
         }
         String url=System.getProperty("a1.mysql.url", "");
         String expectedDataDir=expectedIsolatedDataDir(url);
-        DriverManagerDataSource ds=new DriverManagerDataSource(url,"root","");ds.setDriverClassName("com.mysql.cj.jdbc.Driver");db=new JdbcTemplate(ds);
+        DriverManagerDataSource ds;
+        if(reuseConnection){sharedConnection=new SingleConnectionDataSource(url,"root","",true);ds=sharedConnection;}
+        else ds=new DriverManagerDataSource(url,"root","");
+        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        javax.sql.DataSource fixtureDataSource=!reuseConnection&&Boolean.getBoolean("a1.mysql.pooled")?pooledIsolatedDataSource(url):ds;
+        db=new JdbcTemplate(fixtureDataSource);
         String dataDir=db.queryForObject("select @@datadir",String.class).replace('\\','/');
         if(!dataDir.equalsIgnoreCase(expectedDataDir))throw new IllegalStateException("Refusing non-isolated database directory");
         Path base=Paths.get(System.getProperty("a1.module",System.getProperty("basedir",".")));
@@ -54,14 +79,15 @@ public class A1TestFixture {
             executeSql(ddl);executeSql(new String(Files.readAllBytes(base.resolve("sql/ai_workbook_git_20260914.sql")),java.nio.charset.StandardCharsets.UTF_8));
             executeSql(new String(Files.readAllBytes(base.resolve("sql/ai_agent_20261013.sql")),java.nio.charset.StandardCharsets.UTF_8));
         }
-        SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(ds);
+        SqlSessionFactoryBean factory=new SqlSessionFactoryBean();factory.setDataSource(fixtureDataSource);
         factory.setMapperLocations(new ClassPathResource("mapper/AiWorkbookMapper.xml"),new ClassPathResource("mapper/WorkbookVersionMapper.xml"));
         SqlSessionTemplate session=new SqlSessionTemplate(factory.getObject());workbooks=session.getMapper(AiWorkbookMapper.class);versions=session.getMapper(WorkbookVersionMapper.class);
         guard=new AgentWriteGuard(db);service=new WorkbookVersionServiceImpl();inject(service,"workbookMapper",workbooks);inject(service,"versionMapper",versions);inject(service,"agentWriteGuard",guard);
-        DataSourceTransactionManager manager=new DataSourceTransactionManager(ds);tx=new TransactionTemplate(manager);
+        DataSourceTransactionManager manager=new DataSourceTransactionManager(fixtureDataSource);tx=new TransactionTemplate(manager);
         tx.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
         AgentStore store=new AgentStore(db);runs=new AgentRunService(store,guard,new AgentTools(store),workbooks,versions,null,manager);
     }
+    @Override public void close(){if(sharedConnection!=null)sharedConnection.destroy();}
     static String expectedIsolatedDataDir(String url){
         if(url.startsWith("jdbc:mysql://127.0.0.1:33357/a1_isolated?"))return "D:/Code/agentReport/a1-output-20261014/mysql-data/";
         if(url.startsWith("jdbc:mysql://127.0.0.1:33359/b5_isolated?"))return "D:/Code/agentReport/b5-db-20261024/mysql-data/";
@@ -82,5 +108,15 @@ public class A1TestFixture {
         r.setBaseVersion(0L);r.setExpectedDraftVersion(version);r.setLoadedRevision(loaded);r.setContent(content);r.setPlannedActions(Collections.emptyList());r.setExecutedChanges(Collections.emptyList());return r;
     }
     public R<Map<String,Object>> save(long id,WorkingStateRequest request){identity();return tx.execute(s->service.saveWorkingState(id,request));}
+    /** Test clients freeze source status and target list metadata before checkout. */
+    public com.ruoyi.ai.domain.dto.CheckoutRequest checkoutRequest(long id,long target) {
+        Map<String,Object> state=status(id);Map<?,?> draft=(Map<?,?>)state.get("workingState");
+        com.ruoyi.ai.domain.dto.CheckoutRequest r=new com.ruoyi.ai.domain.dto.CheckoutRequest();
+        r.setOperationId(UUID.randomUUID().toString());r.setCurrentBranchId(((Number)state.get("branchId")).longValue());r.setBaseCommitId((String)state.get("headCommitId"));
+        r.setBaseVersion(((Number)state.get("version")).longValue());r.setExpectedWorkbookVersion(((Number)state.get("workbookVersion")).longValue());
+        r.setExpectedDraftVersion(draft==null?-1L:((Number)draft.get("version")).longValue());r.setLoadedRevision((String)state.get("loadedRevision"));
+        for(Map<String,Object> b:service.branches(id).getData())if(((Number)b.get("branchId")).longValue()==target){r.setTargetVersion(((Number)b.get("version")).longValue());r.setTargetHeadCommitId((String)b.get("headCommitId"));r.setExpectedTargetDraftVersion(((Number)b.get("draftVersion")).longValue());r.setTargetLoadedRevision((String)b.get("loadedRevision"));return r;}
+        throw new IllegalArgumentException("Target branch not found in test list");
+    }
     public Map<String,Object> status(long id){identity();return tx.execute(s->service.status(id)).getData();}
 }

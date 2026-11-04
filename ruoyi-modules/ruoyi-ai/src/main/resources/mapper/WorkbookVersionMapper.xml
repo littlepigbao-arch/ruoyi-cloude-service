@@ -15,10 +15,15 @@
         where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId} and status='active'
     </select>
     <select id="selectBranches" resultType="java.util.HashMap">
-        select branch_id branchId, branch_name branchName, head_commit_id headCommitId,
-               visibility, status, version, created_time createdTime, update_time updateTime
-        from ai_workbook_branch where workbook_id=#{workbookId} and owner_user_id=#{userId}
-        order by case when branch_name='main' then 0 else 1 end, created_time
+        select b.branch_id branchId, b.branch_name branchName, b.head_commit_id headCommitId,
+               b.visibility, b.status, b.version, b.created_time createdTime, b.update_time updateTime,
+               coalesce(d.version,-1) draftVersion,
+               case when d.workbook_id is not null then d.content_hash else s.content_hash end loadedRevision
+        from ai_workbook_branch b
+        left join ai_workbook_working_state d on d.workbook_id=b.workbook_id and d.branch_id=b.branch_id and d.owner_user_id=b.owner_user_id
+        left join ai_workbook_snapshot s on s.workbook_id=b.workbook_id and s.commit_id=b.head_commit_id
+        where b.workbook_id=#{workbookId} and b.owner_user_id=#{userId}
+        order by case when b.branch_name='main' then 0 else 1 end, b.created_time
     </select>
     <select id="selectBranchByName" resultType="java.util.HashMap">
         select branch_id branchId, workbook_id workbookId, branch_name branchName,
@@ -39,7 +44,7 @@
         select commit_id commitId, workbook_id workbookId, branch_id branchId, parent_commit_id parentCommitId,
                commit_no commitNo, commit_message commitMessage, source, author_user_id authorUserId,
                operation_id operationId, before_hash beforeHash, after_hash afterHash, snapshot_id snapshotId,
-               created_time createdTime
+               validation_json validationJson, created_time createdTime
         from ai_workbook_commit where workbook_id=#{workbookId} and operation_id=#{operationId}
     </select>
     <select id="selectCommit" resultType="java.util.HashMap">
@@ -146,5 +151,9 @@
     </select>
     <delete id="deleteWorkingState">
         delete from ai_workbook_working_state where workbook_id=#{workbookId} and branch_id=#{branchId} and owner_user_id=#{userId}
+    </delete>
+    <delete id="deleteWorkingStateCas" parameterType="map">
+        delete from ai_workbook_working_state where workbook_id=#{workbookId} and branch_id=#{branchId}
+          and owner_user_id=#{userId} and version=#{expectedDraftVersion} and content_hash=#{loadedRevision}
     </delete>
 </mapper>

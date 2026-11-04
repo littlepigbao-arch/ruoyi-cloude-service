@@ -1,0 +1,34 @@
+package com.ruoyi.ai.agent;
+import com.fasterxml.jackson.databind.node.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import junit.framework.TestCase;
+import static com.ruoyi.ai.agent.AgentJson.*;
+public class B10ReadDisplayTest extends TestCase {
+    static ObjectNode snapshot(){return (ObjectNode)parse("{\"id\":\"read\",\"sheetOrder\":[\"s\"],\"sheets\":{\"s\":{\"id\":\"s\",\"name\":\"Data\",\"rowCount\":40,\"columnCount\":40,\"cellData\":{\"0\":{\"0\":{\"v\":\"Name\"},\"1\":{\"v\":\"Amount\"},\"3\":{\"v\":5,\"f\":\"=B2+B3\"}},\"1\":{\"0\":{\"v\":\"A\"},\"1\":{\"v\":2},\"2\":{\"v\":false}},\"2\":{\"0\":{\"v\":\"B\"},\"1\":{\"v\":3}},\"3\":{\"0\":{\"v\":\"A\"},\"1\":{\"v\":4},\"2\":{\"v\":0}}},\"mergeData\":[{\"startRow\":0,\"endRow\":0,\"startColumn\":4,\"endColumn\":5}]}}}");}
+    private ObjectNode s,r;
+    protected void setUp(){s=snapshot();r=obj();r.set("readSelection",ReadDisplayTools.selection(parse("{\"sheetId\":\"s\",\"range\":\"B2:C3\",\"activeCell\":{\"row\":2,\"column\":2}}"),s,"s"));}
+    private ObjectNode args(String type){return obj().put("type",type).put("sheetId","s");}
+    private JsonNode run(ObjectNode a){return ReadDisplayTools.execute(s,r,a).path("result");}
+    private ObjectNode chart(String type,String aggregate){return args("createChart").put("chartType",type).put("aggregate",aggregate).put("categoryRange","A2:A4").put("seriesRange","B2:B4");}
+    private void reject(Runnable fn){try{fn.run();fail("Invalid read accepted");}catch(IllegalArgumentException expected){}}
+    public void testValuesPreserveFalseZeroAndNull(){JsonNode values=run(args("getRangeValue").put("range","C2:C4")).path("values");assertEquals(false,values.get(0).get(0).booleanValue());assertTrue(values.get(1).get(0).isNull());assertEquals(0,values.get(2).get(0).asInt());}
+    public void testFormulasIncludeExplicitEmptyCells(){assertEquals(parse("[[\"=B2+B3\"],[\"\"]]"),run(args("getRangeFormulas").put("range","D1:D2")).path("formulas"));}
+    public void testMergesReturnCoordinatesAndA1(){assertEquals("E1:F1",run(args("getMerges")).path("merges").get(0).path("a1").asText());}
+    public void testSelectionUsesCapturedActiveCell(){JsonNode result=run(args("getSelection"));assertEquals("B2:C3",result.path("selection").path("a1").asText());assertEquals("C3",result.path("activeCell").path("a1").asText());assertTrue(result.path("capturedAtStart").asBoolean());}
+    public void testSelectionCoordinatesDoNotMaterializeTheirArea(){JsonNode large=parse("{\"sheetId\":\"s\",\"range\":\"A1:AN40\",\"activeCell\":{\"row\":2,\"column\":2}}");r.set("readSelection",ReadDisplayTools.selection(large,s,"s"));assertEquals("A1:AN40",run(args("getSelection")).path("selection").path("a1").asText());}
+    public void testMissingSelectionCannotBeGuessed(){r.remove("readSelection");reject(()->run(args("getSelection")));}
+    public void testSelectionCannotDeclareAnotherSheetOrOutsideCell(){reject(()->ReadDisplayTools.selection(parse("{\"sheetId\":\"s\",\"range\":\"B2\",\"activeCell\":{\"row\":0,\"column\":0}}"),s,"s"));reject(()->ReadDisplayTools.selection(parse("{\"sheetId\":\"s\",\"range\":\"B2\"}"),s,"other"));}
+    public void testNoFilterExplicitlyReturnsEmptyState(){assertFalse(run(args("getFilter")).path("hasFilter").asBoolean());}
+    public void testFilterReadsPersistedConditionsAndHiddenRows(){s.set("resources",parse("[{\"name\":\"SHEET_FILTER_PLUGIN\",\"data\":\"{\\\"s\\\":{\\\"ref\\\":{\\\"startRow\\\":0,\\\"startColumn\\\":0,\\\"endRow\\\":3,\\\"endColumn\\\":1},\\\"filterColumns\\\":[{\\\"colId\\\":0,\\\"filters\\\":{\\\"filters\\\":[\\\"A\\\"]}}],\\\"cachedFilteredOut\\\":[2]}}\"}]"));JsonNode out=run(args("getFilter"));assertEquals("A1:B4",out.path("range").asText());assertEquals(2,out.path("filteredOutRows").get(0).asInt());assertEquals("A",out.path("columns").get(0).path("criteria").path("filters").path("filters").get(0).asText());}
+    public void testThreeChartTypesPreserveData(){for(String type:new String[]{"bar","line","pie"}){JsonNode out=run(chart(type,"none")).path("chartOption");assertEquals(type,out.path("series").get(0).path("type").asText());assertEquals(3,out.path("series").get(0).path("data").size());if("pie".equals(type))assertEquals(4.0,out.path("series").get(0).path("data").get(2).path("value").asDouble());else assertEquals(4.0,out.path("series").get(0).path("data").get(2).asDouble());}}
+    public void testChartCountSumAndAverage(){double[] expected={2,6,3};int i=0;for(String aggregate:new String[]{"count","sum","avg"})assertEquals(expected[i++],run(chart("bar",aggregate)).path("chartOption").path("series").get(0).path("data").get(0).asDouble());}
+    public void testCountNeedsNoValueRange(){ObjectNode a=chart("bar","count");a.remove("seriesRange");assertEquals(2.0,run(a).path("chartOption").path("series").get(0).path("data").get(0).asDouble());}
+    public void testLargeAverageDoesNotSaturateALong(){for(int row=1;row<=3;row++)s.with("sheets").with("s").with("cellData").with(String.valueOf(row)).with("1").put("v",1e20);assertEquals(1e20,run(chart("bar","avg")).path("chartOption").path("series").get(0).path("data").get(0).asDouble());}
+    public void testNonFiniteChartCalculationCannotBecomeAResult(){s.with("sheets").with("s").with("cellData").with("1").with("1").put("v",9e307);reject(()->run(chart("bar","avg")));}
+    public void testInvalidChartAndMismatchedLengthsReject(){reject(()->run(chart("scatter","none")));reject(()->run(chart("bar","none").put("seriesRange","B2:B3")));reject(()->run(chart("pie","none").put("seriesRange","B2:C4")));}
+    public void testWriteFieldsAndTypesNeverReachReadDispatch(){reject(()->run(args("setCell").put("range","A1").put("value",9)));reject(()->run(args("getRangeValue").put("range","A1").put("snapshot","forged")));}
+    public void testRangesRejectBoundsAndCombinedBudget(){reject(()->run(args("getRangeValue").put("range","A1:AN40")));reject(()->run(args("getRangeValue").put("range","AO1")));reject(()->run(chart("bar","none").put("categoryRange","A1:A40").put("seriesRange","B1:AN40")));}
+    public void testSharedFormulaCannotLookLikeAnEmptyFormula(){s.with("sheets").with("s").with("cellData").with("0").with("3").put("si","shared");reject(()->run(args("getRangeFormulas").put("range","D1")));}
+    public void testOversizedResultRejects(){StringBuilder value=new StringBuilder();for(int i=0;i<200100;i++)value.append('x');s.with("sheets").with("s").with("cellData").with("0").with("0").put("v",value.toString());reject(()->run(args("getRangeValue").put("range","A1")));}
+    public void testAllReadsLeaveSourceUntouched(){String before=s.toString();for(String type:ReadDisplayTools.TYPES){ObjectNode a="createChart".equals(type)?chart("bar","none"):args(type);if(type.startsWith("getRange"))a.put("range","A1:D4");run(a);assertEquals(before,s.toString());}}
+}

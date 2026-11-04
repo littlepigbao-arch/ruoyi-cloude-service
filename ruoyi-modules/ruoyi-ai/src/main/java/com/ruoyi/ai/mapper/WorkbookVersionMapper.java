@@ -28,4 +28,5 @@ public interface WorkbookVersionMapper
     int updateWorkingStateCas(Map<String, Object> state);
     Map<String, Object> selectWorkingState(@Param("workbookId") Long workbookId, @Param("branchId") Long branchId, @Param("userId") Long userId);
     int deleteWorkingState(@Param("workbookId") Long workbookId, @Param("branchId") Long branchId, @Param("userId") Long userId);
+    int deleteWorkingStateCas(Map<String,Object> binding);
 }

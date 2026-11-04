@@ -37,7 +37,7 @@ public class AiWorkbookController
     }
 
     /**
-     * 保存/更新文档（workbookId 为空新增，否则更新）
+     * 创建文档；已有文档内容使用 working-state，名称使用 rename
      */
     @PostMapping("/save")
     public R<AiWorkbook> save(@RequestBody AiWorkbook workbook)

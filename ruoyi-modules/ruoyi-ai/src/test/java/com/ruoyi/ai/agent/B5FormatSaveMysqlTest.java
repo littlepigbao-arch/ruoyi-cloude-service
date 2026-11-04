@@ -45,17 +45,17 @@ public class B5FormatSaveMysqlTest extends TestCase {
         if("setStyle".equals(type)){
             ((ObjectNode)action.path("target")).put("range","A1");action.put("background","#223344");
             scopes.add(obj().put("sheetId","s").put("range","A1"));
-            ((ObjectNode)expected.path("sheets").path("s").path("cellData").path("0").path("0").path("s").path("bg")).put("rgb","#223344");
+            expected.with("sheets").with("s").with("cellData").with("0").with("0").with("s").with("bg").put("rgb","#223344");
             readback.put("row",0).put("column",0).put("value","#223344");
         }else if("setRowHeight".equals(type)){
             action.put("rowPosition",1).put("height",50);
             scopes.add(obj().put("sheetId","s").put("range","A1:J1"));
-            ((ObjectNode)expected.path("sheets").path("s").path("rowData").path("0")).put("h",50).put("ia",0);
+            expected.with("sheets").with("s").with("rowData").with("0").put("h",50).put("ia",0);
             readback.put("index",0).put("value",50);
         }else{
             action.put("columnPosition",1).put("width",120);
             scopes.add(obj().put("sheetId","s").put("range","A1:A10"));
-            ((ObjectNode)expected.path("sheets").path("s").path("columnData").path("0")).put("w",120);
+            expected.with("sheets").with("s").with("columnData").with("0").put("w",120);
             readback.put("index",0).put("value",120);
         }
         request.set("writeScopes",scopes);request.set("actions",arr().add(action));
@@ -178,4 +178,7 @@ public class B5FormatSaveMysqlTest extends TestCase {
         assertEquals(baseline,parse(String.valueOf(fixture.status(workbook).get("content"))));
         isolateUnknown(run,manifest);
     }
+    public void testAbsentRowMetadataSurvivesClaimReceiptAndCas(){((ObjectNode)baseline.path("sheets").path("s").path("rowData")).remove("0");workbook=fixture.seed(baseline.toString());savedFormat("setRowHeight");}
+    public void testAbsentColumnMetadataSurvivesClaimReceiptAndCas(){((ObjectNode)baseline.path("sheets").path("s").path("columnData")).remove("0");workbook=fixture.seed(baseline.toString());savedFormat("setColumnWidth");}
+    public void testAbsentStyleCellSurvivesClaimReceiptAndCas(){((ObjectNode)baseline.path("sheets").path("s").path("cellData")).remove("0");workbook=fixture.seed(baseline.toString());savedFormat("setStyle");}
 }

@@ -27,8 +27,13 @@ public class WorkbookVersionController
     { return versionService.saveWorkingState(workbookId, request); }
 
     @DeleteMapping("/working-state")
-    public R<Void> deleteWorkingState(@PathVariable Long workbookId, @RequestParam(required = false) Long branchId)
-    { return versionService.deleteWorkingState(workbookId, branchId); }
+    public R<Void> deleteWorkingState(@PathVariable Long workbookId, @RequestParam(required = false) Long branchId,
+                                      @RequestBody(required = false) com.ruoyi.ai.domain.dto.DraftDeleteRequest request)
+    {
+        if(request==null)return versionService.deleteWorkingState(workbookId,branchId);
+        if(branchId!=null&&!branchId.equals(request.getBranchId()))return R.fail(409,"丢弃目标分支不一致");
+        return versionService.deleteWorkingState(workbookId,request);
+    }
 
     @PostMapping("/commits")
     public R<Map<String, Object>> commit(@PathVariable Long workbookId, @RequestBody CommitRequest request)

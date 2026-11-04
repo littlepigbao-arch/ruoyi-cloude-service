@@ -7,7 +7,7 @@ import static com.ruoyi.ai.agent.AgentJson.*;
 
 /** Versioned, deliberately small executable contract. No code/eval/SQL tools. */
 public final class AgentPlan {
-    public static final Set<String> TOOLS = new HashSet<>(Arrays.asList("get_workbook_catalog", "inspect_sheet", "read_range",
+    public static final Set<String> TOOLS = new HashSet<>(Arrays.asList("get_workbook_catalog", "inspect_sheet", "read_range", "read_display",
         "build_dataset", "aggregate_table", "join_tables", "derive_columns", "check_data_quality", "apply_actions", "write_result", "verify_result"));
     public static final Set<String> WRITES = new HashSet<>(Arrays.asList("apply_actions", "write_result"));
     public static final String CONTRACT =
@@ -36,6 +36,46 @@ public final class AgentPlan {
             +"B5 每个格式动作必须包含 schemaVersion:\"2.0\"；不要省略 target 或改用顶层 sheetId/range。示例写步骤 W 的 actions 仅含 {\"schemaVersion\":\"2.0\",\"type\":\"setStyle\",\"target\":{\"sheetId\":\"s\",\"range\":\"A1\"},\"background\":\"#223344\"}；对应验证步骤必须依赖 W，inputBindings 为 {\"write\":{\"$step\":\"W\"},\"sheetId\":\"s\",\"range\":\"A1\",\"kind\":\"matches_format\"}。"
             +"尺寸作用于整行或整列，最多1000格；不支持其他样式属性、公式、筛选或结构修改。保存后的可信格式补丁与权威快照一致才可认为验证通过。";
     }
+    public static String contract(boolean formatOpen,boolean filterOpen){
+        String base=contract(formatOpen);
+        if(!filterOpen)return base;
+        return base.replace("筛选和结构写入不支持","结构写入不支持").replace("筛选或结构修改","结构修改")
+            +"B6 筛选资源写入仅支持单个 V2 apply_actions 动作，overwrite:'confirmed'且授权覆盖完整显式范围。"
+            +"setFilter 示例：{\"schemaVersion\":\"2.0\",\"type\":\"setFilter\",\"target\":{\"sheetId\":\"s\",\"range\":\"A1:A4\"},\"columnIndex\":0,\"filters\":[\"Alice\"]}。"
+            +"clearFilter 仅支持同样的显式目标，指定 columnIndex 清该列，或 removeFilter:true 移除整个 Filter；不使用自动范围、condition、customFormula、多列条件。"
+            +"写步骤后必须有依赖它的 verify_result，kind:'matches_filter'，sheetId/range 与动作精确一致；读 getFilter 不保存。";
+    }
+    public static String contract(boolean formatOpen,boolean filterOpen,boolean formulaOpen){
+        String base=contract(formatOpen,filterOpen);
+        if(!formulaOpen)return base;
+        return base.replace("公式、筛选和结构写入不支持","筛选和结构写入不支持").replace("公式和结构写入不支持","结构写入不支持")
+            .replace("公式、筛选或结构修改","筛选或结构修改").replace("公式或结构修改","结构修改")
+            +"B7 公式写入仅支持单独一个 V2 setFormula 或 sumToCell、明确 target.sheetId/range、overwrite:'confirmed'及完整授权范围。"
+            +"示例：{\"schemaVersion\":\"2.0\",\"type\":\"setFormula\",\"target\":{\"sheetId\":\"s\",\"range\":\"C1:C2\"},\"formula\":\"=A1+B1\"}。"
+            +"仅空目标和无现存公式工作簿；整数依赖与整数结果，支持两个引用的 + - * /（除法须整除）及 SUM(矩形范围)，最多1000目标格；相对和 $ 绝对/混合引用按目标平移。"
+            +"sumToCell 是同Sheet SUM 的受控别名：sourceRange 为无前缀的有限A1整数来源，target:{sheetId,range} 或 target:{sheetId} 加 targetRange 指定一个空单元格；两个目标字段同时出现必须一致。单格来源生成 SUM(A1:A1)，不可引用目标本身。不得携带formula或其他写字段。使用原B7预算、授权、独立缓存验证与CAS，不支持跨Sheet或V1模糊目标。"
+            +"必须跟随 verify_result kind:'matches_formula'，验证范围与动作精确一致；其他公式、递归依赖、超预算及不完整缓存都拒绝。";
+    }
+    public static String contract(boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen){
+        String base=contract(formatOpen,filterOpen,formulaOpen);
+        if(!mergeOpen)return base;
+        return base+"B8b 合并写入仅支持单个 V2 merge 或 breakApart，target.sheetId/range 必须明确，overwrite:'confirmed' 且授权覆盖完整矩形。merge 仅使用默认矩形模式；非主格有值时必须明确 force:true，富内容、公式、既有合并重叠及部分解除均拒绝。breakApart 仅精确解除一个合并。写后必须跟随 verify_result kind:'matches_merge'，sheetId/range 与动作精确一致。";
+    }
+    public static String contract(boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen){
+        String base=contract(formatOpen,filterOpen,formulaOpen,mergeOpen);
+        if(!structureOpen)return base;
+        return base+"B8c 第一组仅支持单个 V2 insertRows/deleteRows/insertColumns/deleteColumns；target.sheetId 与整数位置/count 必填，整张最多1000格工作表须以当前完整 A1 范围授权。插入 position 仅 at/after；删除必须 force:true、overwrite:'confirmed'。公式、合并及活动资源依赖拒绝。必须跟随 verify_result kind:'matches_structure'，验证范围为插删前完整工作表。";
+    }
+    public static String contract(boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen){
+        String base=contract(formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen);
+        return sheetOpen?base+"B8c Sheet 第一子组仅支持单个 V2 createSheet，target.sheetId 是现有锚点 Sheet；newSheetName、rowCount、columnCount 必填，现有锚点整表需显式有限授权，overwrite:'confirmed'。新 Sheet ID 由服务端稳定生成；总工作簿不超过1000格。公式、活动资源、重复名称及越界拒绝。写后必须 verify_result kind:'matches_structure'，验证锚点原完整范围。":base;
+    }
+    public static String contract(boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen){return contract(formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,false);}
+    public static String contract(boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen,boolean copyOpen){return contract(formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,copyOpen,false);}
+    public static String contract(boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen,boolean copyOpen,boolean deleteOpen){
+        String base=contract(formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen);if(deleteOpen)base+="B8c deleteSheet 仅单个 V2 动作，target.sheetId 为删除目标，fallbackSheetId 为不同的可见保留 Sheet，force:true，目标整表显式授权且 overwrite:confirmed；不可删除最后一表，公式、合并和活动资源拒绝，工作簿总预算1000格；必须 matches_structure 验证 fallbackSheetId 的完整范围。";if(copyOpen)base+="B8c copySheet 仅单个 V2 动作，target.sheetId 是源 Sheet，newSheetName 必填，源整表须显式授权且 overwrite:confirmed；稳定新 ID 由服务端生成，复制后总预算1000格，公式、合并和活动资源拒绝；写后 matches_structure 验证源整表。";
+        return renameOpen?base+"B8c Sheet 重命名仅支持单个 V2 renameSheet，target.sheetId 为现有 Sheet，newSheetName 必填，目标整表显式授权且 overwrite:'confirmed'；禁止重名、公式、活动资源与超预算工作簿。写后必须 verify_result kind:'matches_structure'，范围为原完整目标 Sheet。":base;
+    }
 
     private AgentPlan() { }
     /** B3: whole-plan admission is pure and happens before any tool call or artifact is created. */
@@ -43,8 +83,28 @@ public final class AgentPlan {
         validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,false);
     }
     public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen) {
-        transport(plan);validate(plan,formatOpen);
-        Set<String> datasets=new HashSet<>();Map<String,JsonNode> formatPatches=new HashMap<>();
+        validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,false);
+    }
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen) {
+        validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,filterOpen,false);
+    }
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen,boolean formulaOpen) {
+        validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,filterOpen,formulaOpen,false);
+    }
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen) {
+        validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,filterOpen,formulaOpen,mergeOpen,false);
+    }
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen) {
+        validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,false);
+    }
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen) {
+        validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,false);
+    }
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen){validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,false);}
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen,boolean copyOpen){validateForRun(plan,snapshot,scopes,activeSheet,overwrite,controlled,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,copyOpen,false);}
+    public static void validateForRun(JsonNode plan,JsonNode snapshot,JsonNode scopes,String activeSheet,boolean overwrite,boolean controlled,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen,boolean copyOpen,boolean deleteOpen) {
+        transport(plan);validate(plan,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,copyOpen,deleteOpen);
+        Set<String> datasets=new HashSet<>();Map<String,JsonNode> formatPatches=new HashMap<>(),filterPatches=new HashMap<>(),formulaPatches=new HashMap<>(),mergePatches=new HashMap<>(),structurePatches=new HashMap<>();
         for(JsonNode step:plan.path("steps")){
             transport(step);String tool=text(step,"tool");JsonNode a=step.path("inputBindings");transport(a);
             require(!"write_result".equals(tool),"AI_CAPABILITY_BLOCKED: write_result 尚未迁移至受控链路");
@@ -63,14 +123,23 @@ public final class AgentPlan {
                 case "check_data_quality":fields(a,"dataset","required","unique","nonNegative","failOnViolation");datasetRef(a.path("dataset"),datasets);int count=0;for(String k:Arrays.asList("required","unique","nonNegative"))if(a.has(k)){strings(a.path(k));count+=a.path(k).size();}require(count>0&&(!a.has("failOnViolation")||a.path("failOnViolation").isBoolean()),"AI_CAPABILITY_BLOCKED: 质量规则无效");break;
                 case "apply_actions":
                     fields(a,"overwrite","actions","transportVersion");require(controlled,"CONTROLLED_DISABLED: 受控写入入口未开启");
-                    require("controlled-values".equals(WriteManifest.classify(a.path("actions"),formatOpen)),"AI_CAPABILITY_BLOCKED: apply_actions 仅支持受控写入");
+                    require("controlled-values".equals(WriteManifest.classify(a.path("actions"),formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,copyOpen,deleteOpen)),"AI_CAPABILITY_BLOCKED: apply_actions 仅支持受控写入");
                     if(WriteManifest.isB5FormatGroup(a.path("actions"))){require("confirmed".equals(text(a,"overwrite"))&&overwrite,"WRITE_POLICY_DENIED: 格式覆盖必须明确授权");formatPatches.put(text(step,"stepId"),WriteManifest.previewB5Format(snapshot,a.path("actions").get(0),scopes).path("patch"));}
+                    else if(FilterManifest.isFilterGroup(a.path("actions"))){require("confirmed".equals(text(a,"overwrite"))&&overwrite,"WRITE_POLICY_DENIED: 筛选资源必须明确授权");filterPatches.put(text(step,"stepId"),FilterManifest.preview(snapshot,a.path("actions").get(0),scopes).path("filterPatch"));}
+                    else if(FormulaManifest.isFormulaGroup(a.path("actions"))){require("confirmed".equals(text(a,"overwrite"))&&overwrite,"WRITE_POLICY_DENIED: 公式写入必须明确授权");formulaPatches.put(text(step,"stepId"),FormulaManifest.preview(snapshot,a.path("actions").get(0),scopes).path("formulaPatch"));}
+                    else if(MergeManifest.isMergeGroup(a.path("actions"))){require("confirmed".equals(text(a,"overwrite"))&&overwrite,"WRITE_POLICY_DENIED: 合并写入必须明确授权");mergePatches.put(text(step,"stepId"),MergeManifest.preview(snapshot,a.path("actions").get(0),scopes).path("mergePatch"));}
+                    else if(StructureManifest.isStructureGroup(a.path("actions"))){require("confirmed".equals(text(a,"overwrite"))&&overwrite,"WRITE_POLICY_DENIED: 结构变更必须明确授权");structurePatches.put(text(step,"stepId"),StructureManifest.preview(snapshot,a.path("actions").get(0),scopes).path("structurePatch"));}
                     else WriteManifest.create(snapshot,a.path("actions"),scopes,activeSheet,text(a,"overwrite"),overwrite);break;
                 case "verify_result":
                     fields(a,"write","sheetId","range","kind","leftColumn","rightColumn","scale");target(a,snapshot,true);
                     require(a.path("write").isObject()&&a.path("write").size()==1&&a.path("write").has("$step"),"AI_CAPABILITY_BLOCKED: 验证必须绑定写步骤");
                     JsonNode patch=formatPatches.get(a.path("write").path("$step").asText());if(patch!=null){int[] actual=AgentTools.range(text(a,"range"));require("matches_format".equals(a.path("kind").asText())&&text(a,"sheetId").equals(patch.path("sheetId").asText())&&actual[0]==patch.path("startRow").asInt(-1)&&actual[1]==patch.path("startColumn").asInt(-1)&&actual[2]==patch.path("endRow").asInt(-1)&&actual[3]==patch.path("endColumn").asInt(-1),"RESULT_UNKNOWN: B5 验证必须精确覆盖完整影响范围");}
+                    JsonNode filterPatch=filterPatches.get(a.path("write").path("$step").asText());if(filterPatch!=null)require("matches_filter".equals(a.path("kind").asText())&&text(a,"sheetId").equals(filterPatch.path("sheetId").asText())&&text(a,"range").equals(filterPatch.path("range").asText()),"RESULT_UNKNOWN: B6 验证必须精确覆盖筛选范围");
+                    JsonNode formulaPatch=formulaPatches.get(a.path("write").path("$step").asText());if(formulaPatch!=null)require("matches_formula".equals(a.path("kind").asText())&&text(a,"sheetId").equals(formulaPatch.path("sheetId").asText())&&text(a,"range").equals(formulaPatch.path("range").asText()),"RESULT_UNKNOWN: B7 验证必须精确覆盖公式范围");
+                    JsonNode mergePatch=mergePatches.get(a.path("write").path("$step").asText());if(mergePatch!=null)require("matches_merge".equals(a.path("kind").asText())&&text(a,"sheetId").equals(mergePatch.path("sheetId").asText())&&text(a,"range").equals(mergePatch.path("range").asText()),"RESULT_UNKNOWN: B8b 验证必须精确覆盖合并范围");
+                    JsonNode structurePatch=structurePatches.get(a.path("write").path("$step").asText());if(structurePatch!=null)require("matches_structure".equals(a.path("kind").asText())&&text(a,"sheetId").equals(structurePatch.path("verifySheetId").asText(structurePatch.path("sheetId").asText()))&&text(a,"range").equals(structurePatch.path("scope").asText()),"RESULT_UNKNOWN: B8c 验证必须覆盖插删前完整工作表");
                     if("product".equals(a.path("kind").asText())){require(text(a,"leftColumn").matches("[A-Z]{1,3}")&&text(a,"rightColumn").matches("[A-Z]{1,3}"),"AI_CAPABILITY_BLOCKED: 验证列无效");if(a.has("scale"))require(a.path("scale").isIntegralNumber()&&a.path("scale").asInt()>=0&&a.path("scale").asInt()<=10,"AI_CAPABILITY_BLOCKED: 验证精度无效");}break;
+                case "read_display": ReadDisplayTools.admit(snapshot,a);break;
                 default:throw new IllegalArgumentException("AI_CAPABILITY_BLOCKED: 未注册工具 "+tool);
             }
             if(Arrays.asList("build_dataset","aggregate_table","join_tables","derive_columns").contains(tool))datasets.add(text(step,"stepId"));
@@ -83,7 +152,25 @@ public final class AgentPlan {
     private static void operand(JsonNode n){fields(n,"field","value");require(n.size()==1&&(n.has("field")||n.has("value")),"AI_CAPABILITY_BLOCKED: 计算操作数无效");if(n.has("field"))text(n,"field");else require(n.path("value").isValueNode(),"AI_CAPABILITY_BLOCKED: 常量必须为标量");}
     private static void target(JsonNode a,JsonNode snapshot,boolean range){JsonNode s=AgentTools.sheet(snapshot,text(a,"sheetId"));if(range){int[] r=AgentTools.range(text(a,"range"));require(r[2]<s.path("rowCount").asInt()&&r[3]<s.path("columnCount").asInt(),"AI_CAPABILITY_BLOCKED: 工具区域超出Sheet");}}
     public static void validate(JsonNode plan) { validate(plan,false); }
-    public static void validate(JsonNode plan,boolean formatOpen) {
+    public static void validate(JsonNode plan,boolean formatOpen) { validate(plan,formatOpen,false); }
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen) {
+        validate(plan,formatOpen,filterOpen,false);
+    }
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen,boolean formulaOpen) {
+        validate(plan,formatOpen,filterOpen,formulaOpen,false);
+    }
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen) {
+        validate(plan,formatOpen,filterOpen,formulaOpen,mergeOpen,false);
+    }
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen) {
+        validate(plan,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,false);
+    }
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen) {
+        validate(plan,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,false);
+    }
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen){validate(plan,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,false);}
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen,boolean copyOpen){validate(plan,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,copyOpen,false);}
+    public static void validate(JsonNode plan,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen,boolean copyOpen,boolean deleteOpen) {
         JsonNode steps = plan.path("steps");
         require(steps.isArray() && steps.size() > 0 && steps.size() <= 12, "计划必须包含1至12个步骤");
         Set<String> known = new HashSet<>();
@@ -105,7 +192,7 @@ public final class AgentPlan {
             if ("verify_result".equals(tool) && !writes.isEmpty()) {
                 JsonNode input=step.path("inputBindings");String writeId=input.path("write").path("$step").asText();
                 require(deps.contains(writeId)&&writes.containsKey(writeId),"RESULT_UNKNOWN: 结果验证必须显式引用所验证的写步骤");
-                verifyCoverage(writes.get(writeId),input,formatOpen);verified.add(writeId);
+                verifyCoverage(writes.get(writeId),input,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,copyOpen,deleteOpen);verified.add(writeId);
             }
             known.add(id);
         }
@@ -123,14 +210,18 @@ public final class AgentPlan {
         if (n.isObject() && n.has("$step")) require(deps.contains(n.path("$step").asText()) && n.size() == 1, "上游引用必须声明依赖");
         else if (n.isContainerNode()) for (JsonNode child : n) checkRefs(child, deps);
     }
-    private static void verifyCoverage(JsonNode write,JsonNode verify,boolean formatOpen) {
+    private static void verifyCoverage(JsonNode write,JsonNode verify,boolean formatOpen,boolean filterOpen,boolean formulaOpen,boolean mergeOpen,boolean structureOpen,boolean sheetOpen,boolean renameOpen,boolean copyOpen,boolean deleteOpen) {
         JsonNode args=write.path("inputBindings");String kind=text(verify,"kind");
-        require(Arrays.asList("non_empty","product","matches_write","matches_format").contains(kind),"RESULT_UNKNOWN: 未注册结果验证规则");
+        require(Arrays.asList("non_empty","product","matches_write","matches_format","matches_filter","matches_formula","matches_merge","matches_structure").contains(kind),"RESULT_UNKNOWN: 未注册结果验证规则");
         if("write_result".equals(write.path("tool").asText())) verifyTarget(args,verify,false);
         else {
             require(args.path("actions").isArray()&&args.path("actions").size()>0,"RESULT_UNKNOWN: 缺少可验证的写动作");
             if(WriteManifest.isB5FormatGroup(args.path("actions"))){require(formatOpen&&"matches_format".equals(kind),"RESULT_UNKNOWN: B5 格式写入尚无可信验证规则");JsonNode action=args.path("actions").get(0);require(text(action.path("target"),"sheetId").equals(text(verify,"sheetId")),"RESULT_UNKNOWN: B5 验证 Sheet 不一致");if("setStyle".equals(action.path("type").asText()))require(text(action.path("target"),"range").equals(text(verify,"range")),"RESULT_UNKNOWN: B5 单格验证范围不一致");return;}
-            require(!"matches_format".equals(kind),"RESULT_UNKNOWN: 标量写入不能使用格式验证");
+            if(FilterManifest.isFilterGroup(args.path("actions"))){require(filterOpen&&"matches_filter".equals(kind),"RESULT_UNKNOWN: B6 筛选写入尚无可信验证规则");JsonNode target=args.path("actions").get(0).path("target");require(text(target,"sheetId").equals(text(verify,"sheetId"))&&text(target,"range").equals(text(verify,"range")),"RESULT_UNKNOWN: B6 筛选验证目标不一致");return;}
+            if(FormulaManifest.isFormulaGroup(args.path("actions"))){JsonNode action=args.path("actions").get(0);if(!formulaOpen){require("setFormula".equals(action.path("type").asText()),"AI_CAPABILITY_BLOCKED: sumToCell 公式门禁关闭");require("product".equals(kind),"FORMULA_UNVERIFIED: 旧静态计划仅接受乘积业务规则");verifyTarget(action,verify,true);return;}require("matches_formula".equals(kind),"RESULT_UNKNOWN: B7 公式写入尚无可信验证规则");JsonNode target=FormulaManifest.normalizedAction(args.path("actions").get(0)).path("target");require(text(target,"sheetId").equals(text(verify,"sheetId"))&&text(target,"range").equals(text(verify,"range")),"RESULT_UNKNOWN: B7 公式验证目标不一致");return;}
+            if(MergeManifest.isMergeGroup(args.path("actions"))){require(mergeOpen&&"matches_merge".equals(kind),"RESULT_UNKNOWN: B8b 合并写入尚无可信验证规则");JsonNode target=args.path("actions").get(0).path("target");require(text(target,"sheetId").equals(text(verify,"sheetId"))&&text(target,"range").equals(text(verify,"range")),"RESULT_UNKNOWN: B8b 合并验证目标不一致");return;}
+            if(StructureManifest.isStructureGroup(args.path("actions"))){JsonNode action=args.path("actions").get(0);String type=action.path("type").asText();require(("createSheet".equals(type)?sheetOpen:"renameSheet".equals(type)?renameOpen:"copySheet".equals(type)?copyOpen:"deleteSheet".equals(type)?deleteOpen:structureOpen)&&"matches_structure".equals(kind),"RESULT_UNKNOWN: B8c 结构写入尚无可信验证规则");require(("deleteSheet".equals(type)?text(action,"fallbackSheetId"):text(action.path("target"),"sheetId")).equals(text(verify,"sheetId")),"RESULT_UNKNOWN: B8c 验证 Sheet 不一致");return;}
+            require(!"matches_format".equals(kind)&&!"matches_filter".equals(kind)&&!"matches_formula".equals(kind)&&!"matches_merge".equals(kind)&&!"matches_structure".equals(kind),"RESULT_UNKNOWN: 标量写入不能使用资源验证");
             for(JsonNode action:args.path("actions")) {
                 String type=text(action,"type");require(Arrays.asList("setCell","setValues","setCellForCell","clearRange","setFormula").contains(type),"RESULT_UNKNOWN: 此动作尚无可信业务验证规则");
                 if("clearRange".equals(type)||action.has("value")&&containsEmptyValue(action.path("value"))||action.has("values")&&containsEmptyValue(action.path("values")))require("matches_write".equals(kind),"RESULT_UNKNOWN: 清除/空值必须对照已保存变更验证");

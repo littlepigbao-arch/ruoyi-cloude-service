@@ -74,11 +74,12 @@ public class A1IsolationIT extends TestCase {
     public void testManualCommitAndBranchCheckoutRemainCompatible(){
         long id=f.seed("{\"v\":0}");long main=f.request(id,-1,null,"{}").getBranchId();
         com.ruoyi.ai.domain.dto.CommitRequest commit=new com.ruoyi.ai.domain.dto.CommitRequest();commit.setBranchId(main);commit.setBaseVersion(0L);commit.setOperationId(UUID.randomUUID().toString());commit.setCommitMessage("A1 manual compatibility");commit.setSource("manual");commit.setContent("{\"v\":1}");commit.setExecutedChanges(Collections.singletonList(Collections.singletonMap("kind",(Object)"cell-value")));
+        commit.setExpectedDraftVersion(-1L);commit.setLoadedRevision(hashOf("{\"v\":0}"));
         f.identity();R<Map<String,Object>> saved=f.tx.execute(s->f.service.commit(id,commit));assertEquals(200,saved.getCode());String head=String.valueOf(saved.getData().get("commitId"));assertEquals(1,((Number)saved.getData().get("branchVersion")).intValue());assertEquals(1,((Number)saved.getData().get("workbookVersion")).intValue());
         WorkingStateRequest draft=f.request(id,-1,hashOf("{\"v\":1}"),"{\"v\":2}");draft.setBaseVersion(1L);draft.setBaseCommitId(head);assertEquals(200,f.save(id,draft).getCode());
         com.ruoyi.ai.domain.dto.BranchRequest create=new com.ruoyi.ai.domain.dto.BranchRequest();create.setBranchName("draft/a1-"+UUID.randomUUID());create.setFromCommitId(head);create.setOperationId(UUID.randomUUID().toString());
         R<Map<String,Object>> branch=f.tx.execute(s->f.service.createBranch(id,create));assertEquals(200,branch.getCode());long target=((Number)branch.getData().get("branchId")).longValue();
-        com.ruoyi.ai.domain.dto.CheckoutRequest checkout=new com.ruoyi.ai.domain.dto.CheckoutRequest();checkout.setCurrentBranchId(main);checkout.setBaseCommitId(head);checkout.setOperationId(UUID.randomUUID().toString());
+        com.ruoyi.ai.domain.dto.CheckoutRequest checkout=f.checkoutRequest(id,target);
         R<Map<String,Object>> switched=f.tx.execute(s->f.service.checkout(id,target,checkout));assertEquals(200,switched.getCode());assertEquals("{\"v\":1}",switched.getData().get("content"));
         assertEquals("{\"v\":2}",f.tx.execute(s->f.versions.selectWorkingStateForUpdate(id,main,1L)).get("content"));
     }

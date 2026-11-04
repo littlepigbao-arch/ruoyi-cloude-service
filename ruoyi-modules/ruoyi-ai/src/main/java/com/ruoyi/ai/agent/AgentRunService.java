@@ -38,10 +38,23 @@ public class AgentRunService implements DisposableBean {
     @org.springframework.beans.factory.annotation.Autowired(required=false) private ControlledWriteService controlled;
     public boolean controlledWritesEnabled(){return controlled!=null&&controlled.enabled();}
     public boolean formatActionsEnabled(){return controlled!=null&&controlled.formatActionsEnabled();}
+    public boolean filterActionsEnabled(){return controlled!=null&&controlled.filterActionsEnabled();}
+    public boolean formulaActionsEnabled(){return controlled!=null&&controlled.formulaActionsEnabled();}
+    public boolean mergeActionsEnabled(){return controlled!=null&&controlled.mergeActionsEnabled();}
+    public boolean structureActionsEnabled(){return controlled!=null&&controlled.structureActionsEnabled();}
+    public boolean sheetActionsEnabled(){return controlled!=null&&controlled.sheetActionsEnabled();}
+    public boolean sheetDeleteActionsEnabled(){return controlled!=null&&controlled.sheetDeleteActionsEnabled();}
+    public boolean sheetCopyActionsEnabled(){return controlled!=null&&controlled.sheetCopyActionsEnabled();}
+    public boolean resultWritesEnabled(){return controlled!=null&&controlled.resultWritesEnabled();}
+    public boolean resultSheetWritesEnabled(){return controlled!=null&&controlled.resultSheetWritesEnabled();}
+    public boolean sheetRenameActionsEnabled(){return controlled!=null&&controlled.sheetRenameActionsEnabled();}
     public ObjectNode createControlled(ObjectNode request,long user){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.create(request,user);}
+    public ArrayNode resultArtifacts(long workbook,long user){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.resultArtifacts(workbook,user);}
     public ObjectNode claimControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.claim(id,user,request);}
     public ObjectNode receiptControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.receipt(id,user,request,this::completeStep);}
     public ObjectNode uncertainControlled(String id,long user,ObjectNode request){require(controlled!=null,"CONTROLLED_DISABLED");return controlled.uncertain(id,user,request);}
+    @Value("${ai.agent.b10-read-display-enabled:false}") private boolean readDisplay;
+    public boolean readDisplayEnabled(){return enabled()&&readDisplay;}
     @Value("${ai.agent.replanning-enabled:true}") private boolean replanning;
     @Value("${ai.agent.business-tools-enabled:true}") private boolean businessTools;
     @Value("${ai.agent.max-context-chars:24000}") private int contextLimit;
@@ -73,10 +86,22 @@ public class AgentRunService implements DisposableBean {
             .put("draftActionsJson",String.valueOf(draft.get("draftActionsJson")))
             .put("executedChangesJson",String.valueOf(draft.get("executedChangesJson"))));return out;
     });}
-    public Set<String> availableTools(){Set<String> result=new TreeSet<>(AgentPlan.TOOLS);result.remove("write_result");if(!controlledWritesEnabled())result.remove("apply_actions");if(!businessTools)result.removeAll(Arrays.asList("build_dataset","aggregate_table","join_tables","derive_columns"));return result;}
-    private void admitPlan(JsonNode plan,ObjectNode r){for(JsonNode step:plan.path("steps"))require(availableTools().contains(step.path("tool").asText()),"AI_CAPABILITY_BLOCKED: 当前不可用工具 "+step.path("tool").asText());AgentPlan.validateForRun(plan,r.has("initialSnapshot")?r.path("initialSnapshot"):r.path("expectedSnapshot"),r.path("writeScopes"),r.path("activeSheetId").asText(),r.path("allowOverwrite").asBoolean(),controlledWritesEnabled(),formatActionsEnabled());}
+    public Set<String> availableTools(){Set<String> result=new TreeSet<>(AgentPlan.TOOLS);if(!readDisplayEnabled())result.remove("read_display");if(!resultWritesEnabled())result.remove("write_result");if(!controlledWritesEnabled())result.remove("apply_actions");if(!businessTools)result.removeAll(Arrays.asList("build_dataset","aggregate_table","join_tables","derive_columns"));return result;}
+    private void admitPlan(JsonNode plan,ObjectNode r){for(JsonNode step:plan.path("steps"))require(availableTools().contains(step.path("tool").asText()),"AI_CAPABILITY_BLOCKED: 当前不可用工具 "+step.path("tool").asText());ReadDisplayTools.checkRunContext(plan,r);AgentPlan.validateForRun(ResultPlan.admissionCopy(plan,resultWritesEnabled(),resultSheetWritesEnabled(),r),r.has("initialSnapshot")?r.path("initialSnapshot"):r.path("expectedSnapshot"),r.path("writeScopes"),r.path("activeSheetId").asText(),(r.path("allowOverwrite").asBoolean()||r.has("resultSheetAuthorization")),controlledWritesEnabled(),formatActionsEnabled(),filterActionsEnabled(),formulaActionsEnabled(),mergeActionsEnabled(),structureActionsEnabled(),sheetActionsEnabled(),sheetRenameActionsEnabled(),sheetCopyActionsEnabled(),sheetDeleteActionsEnabled());}
     private void enabledCheck(){require(enabled(),"Plan-and-Execute尚未启用，请先执行数据库迁移并配置ai.agent.enabled");}
     public ObjectNode get(String id,long user){ObjectNode r=store.get(id);require(r.path("userId").asLong()==user,"任务不存在或无权访问");return view(r);}
+    /** Only server-recorded successful read_display outputs are exposed; never a client-selected artifact ID. */
+    public ObjectNode readDisplayResults(String id,long user){
+        ObjectNode r=store.get(id);require(r.path("userId").asLong()==user,"任务不存在或无权访问");guardOwnership(r.path("workbookId").asLong(),user);
+        ArrayNode items=arr();for(JsonNode step:r.path("plan").path("steps"))if("read_display".equals(step.path("tool").asText())&&"SUCCEEDED".equals(step.path("status").asText())){
+            JsonNode output=r.path("outputs").path(step.path("stepId").asText());require(output.path("resultRef").isTextual()&&output.path("sourceRevision").isTextual(),"READ_DISPLAY_INVALID: 只读步骤缺少来源");
+            // Read an earlier successful step as historical data. Writeback still uses the unchanged current-revision guard.
+            ObjectNode source=r.deepCopy();source.put("revision",text(output,"sourceRevision"));ObjectNode record=store.artifactRecord(source,text(output,"resultRef"));JsonNode data=record.path("data");
+            require(ReadDisplayTools.TYPES.contains(data.path("type").asText())&&data.path("result").isObject(),"READ_DISPLAY_INVALID: 制品不是只读展示结果");
+            ObjectNode item=(ObjectNode)data.deepCopy();item.put("stepId",step.path("stepId").asText()).put("objective",step.path("objective").asText()).put("sourceRevision",record.path("sourceRevision").asText());items.add(item);
+        }
+        return obj().put("runId",id).put("workbookId",r.path("workbookId").asLong()).set("items",items);
+    }
     public List<JsonNode> events(String id,long user,long after){get(id,user);List<JsonNode> out=new ArrayList<>();store.db.queryForList("select event_json from ai_agent_event where run_id=? and sequence_no>? order by sequence_no limit 200",String.class,id,Math.max(0,after)).forEach(s->out.add(parse(s)));return out;}
     public ObjectNode active(long workbook,long user){guardOwnership(workbook,user);if(!recoveryAvailable())return obj();List<String> ids=store.db.queryForList("select run_id from ai_agent_run where workbook_id=? and user_id=? order by created_at desc limit 1",String.class,workbook,user);return ids.isEmpty()?obj():get(ids.get(0),user);}
     /** Query persisted identity under the creation lock. Absence is never proof that creation failed. */
@@ -120,7 +145,9 @@ public class AgentRunService implements DisposableBean {
                 require(req.path("expectedDraftVersion").asLong()==(draft==null?-1:((Number)draft.get("version")).longValue())&&req.path("expectedBranchVersion").asLong()==((Number)b.get("version")).longValue()&&req.path("loadedRevision").asText().equals(ContentHashUtils.sha256(content)),"WRITE_VERSION_CONFLICT");
                 r.set("writeScopes",req.path("writeScopes"));r.set("expectedDraftVersion",req.path("expectedDraftVersion"));r.set("expectedBranchVersion",req.path("expectedBranchVersion"));r.set("loadedRevision",req.path("loadedRevision"));r.put("activeSheetId",text(req,"activeSheetId"));
             }
-            store.db.update("insert into ai_agent_run values (?,?,?,?,?,?,?, ?,0,now(3),now(3))",id,user,workbook,branch,requestId,hash(req),"QUEUED",r.toString());
+            if(req.has("readSelection"))r.set("readSelection",ReadDisplayTools.selection(req.path("readSelection"),snapshot,r.path("activeSheetId").asText()));
+            if(req.has("resultSheetAuthorization")){r.set("resultSheetAuthorization",req.path("resultSheetAuthorization").deepCopy());controlled.authorizeResultSheet(r,snapshot);}
+            store.db.update("insert into ai_agent_run(run_id,user_id,workbook_id,branch_id,request_id,request_hash,status,state_json,row_version,updated_at,created_at) values (?,?,?,?,?,?,?, ?,0,now(3),now(3))",id,user,workbook,branch,requestId,hash(req),"QUEUED",r.toString());
             store.event(r,"CREATED","已取得工作区写租约，开始读取结构与制定计划");store.save(r);return view(r);
         });
     }
@@ -235,17 +262,18 @@ public class AgentRunService implements DisposableBean {
         if(index>=steps.size()){require("SAVED".equals(r.path("persistenceStatus").asText()),"最终草稿尚未保存");for(JsonNode s:steps)require("SUCCEEDED".equals(s.path("status").asText()),"存在未验证步骤");r.put("status","VERIFYING");store.event(r,"VERIFYING","所有有效步骤验证通过，正在检查最终保存版本");sameRevision(r);finish(r,"COMPLETED","计划步骤及整体验收已通过，最终工作草稿已保存");return null;}
         ObjectNode step=(ObjectNode)steps.get(index);JsonNode args=AgentPlan.resolve(step.path("inputBindings"),(ObjectNode)r.path("outputs"));String tool=step.path("tool").asText();step.put("status","RUNNING");
         if(!businessTools)require(!Arrays.asList("build_dataset","join_tables","aggregate_table","derive_columns").contains(tool),"业务计算工具未启用");
-        ObjectNode call=obj().put("callId",UUID.randomUUID().toString()).put("stepId",step.path("stepId").asText()).put("tool",tool).put("argsHash",hash(args)).put("status","PENDING");call.set("args",args);if(!("apply_actions".equals(tool)&&controlledWritesEnabled()))store.call(r,call);
+        ObjectNode call=obj().put("callId",UUID.randomUUID().toString()).put("stepId",step.path("stepId").asText()).put("tool",tool).put("argsHash",hash(args)).put("status","PENDING");call.set("args",args);if(!(("apply_actions".equals(tool)&&controlledWritesEnabled())||("write_result".equals(tool)&&resultWritesEnabled())))store.call(r,call);
         try{if("apply_actions".equals(tool)&&controlledWritesEnabled()){
                 // No legacy proposal/receipt path is opened. The same controlled service also serves explicit action requests.
                 controlled.prepareLocked(r,args.path("actions"),text(args,"overwrite"));
+            }else if("write_result".equals(tool)&&resultWritesEnabled()){controlled.prepareResultLocked(r,args);
             }else if(AgentPlan.WRITES.contains(tool)){call.put("status","BLOCKED");store.call(r,call);step.put("status","BLOCKED");pause(r,"SNAPSHOT_WRITE_BLOCKED: A1 阻断完整 Snapshot 智能体写入，已保存结果保持不变");}
             else{ObjectNode out=tools.execute(r,tool,args,r.path("expectedSnapshot"));call.put("status","SUCCEEDED");call.set("result",out);store.call(r,call);completeStep(r,out);}
         }catch(IllegalArgumentException e){call.put("status","FAILED").put("error",e.getMessage());store.call(r,call);step.put("status","FAILED");r.put("lastError",e.getMessage());r.put("status",replanning&&r.path("replans").asInt()<3?"REPLANNING":"WAITING_USER");r.put("question",e.getMessage()+"。请补充字段或业务口径后继续。");store.event(r,"STEP_FAILED",e.getMessage());}
         saveStep(r,step);return null;
     }
     private void completeStep(ObjectNode r,ObjectNode output){ObjectNode step=(ObjectNode)r.path("plan").path("steps").get(r.path("stepIndex").asInt());step.put("status","SUCCEEDED");step.set("resultRefs",output);((ObjectNode)r.path("outputs")).set(step.path("stepId").asText(),output);((ArrayNode)r.path("completedSteps")).add(step.deepCopy());saveStep(r,step);r.put("stepIndex",r.path("stepIndex").asInt()+1);store.event(r,"STEP_SUCCEEDED",step.path("objective").asText()+"：程序验证通过");}
-    private void saveStep(ObjectNode r,JsonNode step){store.db.update("insert into ai_agent_step values (?,?,?,?,?) on duplicate key update status=values(status),definition_json=values(definition_json)",r.path("runId").asText(),r.path("planVersion").asInt(),step.path("stepId").asText(),step.path("status").asText(),step.toString());}
+    private void saveStep(ObjectNode r,JsonNode step){store.db.update("insert into ai_agent_step(run_id,plan_version,step_id,status,definition_json) values (?,?,?,?,?) on duplicate key update status=values(status),definition_json=values(definition_json)",r.path("runId").asText(),r.path("planVersion").asInt(),step.path("stepId").asText(),step.path("status").asText(),step.toString());}
     static boolean planningStillCurrent(JsonNode persisted,JsonNode dispatched,long now){
         JsonNode deadline=persisted.path("deadline"),leftUser=persisted.path("userId"),rightUser=dispatched.path("userId"),leftFence=persisted.path("fencingToken"),rightFence=dispatched.path("fencingToken");
         return "PLANNING".equals(persisted.path("status").asText())&&persisted.path("runId").isTextual()&&persisted.path("runId").equals(dispatched.path("runId"))
@@ -257,10 +285,10 @@ public class AgentRunService implements DisposableBean {
     private void plan(ObjectNode job,long user){String id=job.path("runId").asText();try{
         // A queued task may have timed out or been cancelled while another model call blocked.
         if(!planningStillCurrent(store.get(id),job,System.currentTimeMillis()))return;
-        ObjectNode context=obj().put("goal",job.path("goal").asText()).put("allowOverwrite",job.path("allowOverwrite").asBoolean());context.set("constraints",job.path("constraints"));context.set("catalog",AgentTools.catalog(job.path("expectedSnapshot")));context.set("completedSteps",job.path("completedSteps"));context.put("lastError",job.path("lastError").asText());
+        ObjectNode context=obj().put("goal",job.path("goal").asText()).put("allowOverwrite",job.path("allowOverwrite").asBoolean());context.set("constraints",job.path("constraints"));if(job.has("resultSheetAuthorization"))context.set("resultSheetAuthorization",job.path("resultSheetAuthorization"));context.set("catalog",AgentTools.catalog(job.path("expectedSnapshot")));context.set("completedSteps",job.path("completedSteps"));context.put("lastError",job.path("lastError").asText());
         require(context.toString().length()<=contextLimit,"上下文超过预算，请缩小目标或开始新会话；完整历史已保留");
         context.set("writeScopes",job.path("writeScopes"));context.set("availableTools",JSON.valueToTree(availableTools()));
-        List<Map<String,String>> messages=new ArrayList<>();Map<String,String> system=new HashMap<>();system.put("role","system");system.put("content",AgentPlan.contract(formatActionsEnabled())+"重规划只生成剩余工作，不得重复已成功写入；已完成记录不可删除。当前计划必须独立可执行，需要的旧数据重新提取。"+(controlledWritesEnabled()&&!formatActionsEnabled()?"B1仅允许apply_actions中的setCell/setValues标量值；不得生成公式、样式、清空或write_result。目标必须在writeScopes之内，每次最多1000格。":""));messages.add(system);Map<String,String> userMessage=new HashMap<>();userMessage.put("role","user");userMessage.put("content",context.toString());messages.add(userMessage);
+        List<Map<String,String>> messages=new ArrayList<>();Map<String,String> system=new HashMap<>();system.put("role","system");system.put("content",(resultWritesEnabled()?"B9 开放单次有界 write_result，dataset 必须为上游数据集 $step 引用，明确现有目标 sheetId/range/overwrite，目标不得使用来源 Sheet，最多1000格（含表头），必须 verify_result kind:matches_write 精确匹配目标。不能与 apply_actions 或其他写回混排，写回后只允许验证；禁止隐式新 Sheet、highlight、字面 resultRef/sourceRevision。若上下文明确提供 resultSheetAuthorization，则只能单次 write_result 使用 dataset/newSheet/overwrite:confirmed，其中 newSheet 必须逐字段等于该授权，不生成 sheetId；新 Sheet 将原子创建并填充，之后 verify_result kind:matches_structure，sheetId 为授权 anchorSheetId、range 为锚点整表范围。没有该授权禁止 newSheet。以下旧契约中 write_result 不支持的声明在本 B9 子集由本条替代。":"")+(readDisplayEnabled()?ReadDisplayTools.CONTRACT:"")+AgentPlan.contract(formatActionsEnabled(),filterActionsEnabled(),formulaActionsEnabled(),mergeActionsEnabled(),structureActionsEnabled(),sheetActionsEnabled(),sheetRenameActionsEnabled(),sheetCopyActionsEnabled(),sheetDeleteActionsEnabled())+"重规划只生成剩余工作，不得重复已成功写入；已完成记录不可删除。当前计划必须独立可执行，需要的旧数据重新提取。"+(controlledWritesEnabled()&&!formatActionsEnabled()?"B1仅允许apply_actions中的setCell/setValues标量值；不得生成公式、样式、清空或write_result。目标必须在writeScopes之内，每次最多1000格。":""));messages.add(system);Map<String,String> userMessage=new HashMap<>();userMessage.put("role","user");userMessage.put("content",context.toString());messages.add(userMessage);
         LlmResponse response=llm.chat(messages);JsonNode parsed=parse(response.getContent());
         mutate(id,user,r->{if(!"PLANNING".equals(r.path("status").asText())||!r.path("planningToken").equals(job.path("planningToken")))return null;
             r.put("tokens",r.path("tokens").asInt()+response.getTotalTokens());require(r.path("tokens").asInt()<=tokenLimit,"token预算耗尽");
@@ -268,7 +296,7 @@ public class AgentRunService implements DisposableBean {
             if(parsed.has("question")){r.put("status","WAITING_USER").put("question",text(parsed,"question"));store.event(r,"WAITING_USER",r.path("question").asText());return null;}
             try{admitPlan(parsed,r);}catch(IllegalArgumentException rejected){pause(r,"计划未生成或未通过验证："+rejected.getMessage());return null;}if(r.has("plan"))for(JsonNode s:r.path("plan").path("steps"))if(!"SUCCEEDED".equals(s.path("status").asText())){((ObjectNode)s).put("status","SUPERSEDED");saveStep(r,s);}
             int version=r.path("planVersion").asInt()+1;ObjectNode p=parsed.deepCopy();p.put("planId",UUID.randomUUID().toString()).put("planVersion",version).put("changeReason",r.path("lastError").asText("初始计划"));for(JsonNode s:p.path("steps"))((ObjectNode)s).put("status","PENDING");
-            r.set("plan",p);r.set("outputs",obj());r.put("planVersion",version).put("stepIndex",0).put("status","EXECUTING");r.remove("question");store.db.update("insert into ai_agent_plan values (?,?,?,now(3))",id,version,p.toString());for(JsonNode s:p.path("steps"))saveStep(r,s);store.event(r,"PLAN_READY","计划第"+version+"版已通过契约校验");return null;
+            r.set("plan",p);r.set("outputs",obj());r.put("planVersion",version).put("stepIndex",0).put("status","EXECUTING");r.remove("question");store.db.update("insert into ai_agent_plan(run_id,plan_version,definition_json,created_at) values (?,?,?,now(3))",id,version,p.toString());for(JsonNode s:p.path("steps"))saveStep(r,s);store.event(r,"PLAN_READY","计划第"+version+"版已通过契约校验");return null;
         });
     }catch(Exception e){mutate(id,user,r->{if("PLANNING".equals(r.path("status").asText())&&r.path("planningToken").equals(job.path("planningToken")))pause(r,"计划未生成或未通过验证："+e.getMessage());return null;});}}
 }

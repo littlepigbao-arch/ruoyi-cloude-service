@@ -139,7 +139,7 @@ public class AiChatServiceImpl implements AiChatService
         List<Map<String, String>> messages;
         try
         {
-            messages = promptBuilder.buildMessages(req, dbHistory, controlledWrites.formatActionsEnabled());
+            messages = promptBuilder.buildMessages(req, dbHistory, controlledWrites.formatActionsEnabled(), controlledWrites.filterActionsEnabled(), controlledWrites.formulaActionsEnabled(), controlledWrites.mergeActionsEnabled(), controlledWrites.structureActionsEnabled(), controlledWrites.sheetActionsEnabled(), controlledWrites.sheetRenameActionsEnabled(), controlledWrites.sheetCopyActionsEnabled(), controlledWrites.sheetDeleteActionsEnabled());
         }
         catch (Exception e)
         {
@@ -186,7 +186,7 @@ public class AiChatServiceImpl implements AiChatService
         try {
             executionMode = com.ruoyi.ai.agent.WriteManifest.checkChatTransport(
                 mapper.valueToTree(chatResp.getActions()==null?java.util.Collections.emptyList():chatResp.getActions()),
-                mapper.valueToTree(req.getClientMeta()), controlledWrites.enabled(), controlledWrites.formatActionsEnabled());
+                mapper.valueToTree(req.getClientMeta()), controlledWrites.enabled(), controlledWrites.formatActionsEnabled(), controlledWrites.filterActionsEnabled(), controlledWrites.formulaActionsEnabled(), controlledWrites.mergeActionsEnabled(), controlledWrites.structureActionsEnabled(), controlledWrites.sheetActionsEnabled(), controlledWrites.sheetRenameActionsEnabled(), controlledWrites.sheetCopyActionsEnabled(), controlledWrites.sheetDeleteActionsEnabled());
         } catch (IllegalArgumentException unsupported) { return R.fail(409, unsupported.getMessage()); }
         try { normalizeActionTargets(chatResp, req); }
         catch (IllegalArgumentException invalidTarget) { return R.fail(422, invalidTarget.getMessage()); }

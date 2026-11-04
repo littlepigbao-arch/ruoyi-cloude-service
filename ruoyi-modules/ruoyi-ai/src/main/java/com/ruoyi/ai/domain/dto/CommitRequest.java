@@ -11,6 +11,8 @@ public class CommitRequest
     private String operationId;
     private String baseCommitId;
     private Long baseVersion;
+    private Long expectedDraftVersion;
+    private String loadedRevision;
     private String content;
     private String source;
     private String actionSchemaVersion;
@@ -32,6 +34,10 @@ public class CommitRequest
     public void setBaseCommitId(String baseCommitId) { this.baseCommitId = baseCommitId; }
     public Long getBaseVersion() { return baseVersion; }
     public void setBaseVersion(Long baseVersion) { this.baseVersion = baseVersion; }
+    public Long getExpectedDraftVersion() { return expectedDraftVersion; }
+    public void setExpectedDraftVersion(Long value) { expectedDraftVersion = value; }
+    public String getLoadedRevision() { return loadedRevision; }
+    public void setLoadedRevision(String value) { loadedRevision = value; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
     public String getSource() { return source; }

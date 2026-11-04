@@ -30,16 +30,21 @@ public class AgentStore {
         long seq = r.path("eventSeq").asLong() + 1;
         r.put("eventSeq", seq);
         ObjectNode e = obj().put("sequence", seq).put("type", type).put("message", message).put("time", System.currentTimeMillis());
-        db.update("insert into ai_agent_event values (?,?,?,now(3))", r.path("runId").asText(), seq, e.toString());
+        db.update("insert into ai_agent_event(run_id,sequence_no,event_json,created_at) values (?,?,?,now(3))", r.path("runId").asText(), seq, e.toString());
     }
     public void call(ObjectNode r, ObjectNode c) {
-        db.update("insert into ai_agent_tool_call values (?,?,?,?,?) on duplicate key update status=values(status),call_json=values(call_json)",
+        db.update("insert into ai_agent_tool_call(run_id,call_id,status,args_hash,call_json) values (?,?,?,?,?) on duplicate key update status=values(status),call_json=values(call_json)",
             r.path("runId").asText(), c.path("callId").asText(), c.path("status").asText(), c.path("argsHash").asText(), c.toString());
     }
     public String artifact(ObjectNode r, JsonNode data) {
         String id = UUID.randomUUID().toString();
-        db.update("insert into ai_analysis_artifact values (?,?,?,?,?,now(3))", id, r.path("runId").asText(), r.path("userId").asLong(), r.path("revision").asText(), data.toString());
+        db.update("insert into ai_analysis_artifact(artifact_id,run_id,user_id,source_revision,content_json,created_at) values (?,?,?,?,?,now(3))", id, r.path("runId").asText(), r.path("userId").asLong(), r.path("revision").asText(), data.toString());
         return id;
+    }
+    /** Versioned JSON envelope; old artifacts remain readable but have no trusted writeback lineage. */
+    public String artifact(ObjectNode r, JsonNode data, JsonNode lineage) {
+        ObjectNode envelope=obj().put("artifactEnvelopeVersion",2).put("dataDigest",WriteManifest.digest(data)).put("lineageDigest",WriteManifest.digest(lineage));
+        envelope.set("data",data.deepCopy());envelope.set("lineage",lineage.deepCopy());return artifact(r,envelope);
     }
     public JsonNode artifact(ObjectNode r, String id) {
         return artifactRecord(r,id).path("data");
@@ -57,7 +62,13 @@ public class AgentStore {
         Map<String,Object> row=rows.get(0);String revision=String.valueOf(row.get("source_revision"));
         require(!revision.isEmpty() && revision.equals(r.path("revision").asText()),"SOURCE_STALE: 制品权威来源版本已变化，请重新提取");
         ObjectNode record=obj().put("resultRef",id).put("sourceRevision",revision)
+            .put("runId",r.path("runId").asText()).put("userId",r.path("userId").asLong())
             .put("workbookId",((Number)row.get("workbook_id")).longValue()).put("branchId",((Number)row.get("branch_id")).longValue());
-        record.set("data",parse(String.valueOf(row.get("content_json"))));return record;
+        JsonNode stored=parse(String.valueOf(row.get("content_json"))),data=stored,lineage=arr();
+        if(stored.has("artifactEnvelopeVersion")){
+            require(WriteManifest.sameIntegral(stored.path("artifactEnvelopeVersion"),2)&&stored.has("data")&&stored.path("lineage").isArray(),"SOURCE_INVALID: 制品封装无效");data=stored.path("data");lineage=stored.path("lineage");
+            require(WriteManifest.digest(data).equals(stored.path("dataDigest").asText())&&WriteManifest.digest(lineage).equals(stored.path("lineageDigest").asText()),"SOURCE_INVALID: 制品摘要不符");
+        }
+        record.set("data",data);record.set("lineage",lineage);record.put("dataDigest",WriteManifest.digest(data)).put("lineageDigest",WriteManifest.digest(lineage));return record;
     }
 }

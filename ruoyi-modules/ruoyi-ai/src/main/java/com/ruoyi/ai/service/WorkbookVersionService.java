@@ -16,6 +16,7 @@ public interface WorkbookVersionService
     R<Map<String, Object>> status(Long workbookId);
     R<Map<String, Object>> saveWorkingState(Long workbookId, WorkingStateRequest request);
     R<Void> deleteWorkingState(Long workbookId, Long branchId);
+    R<Void> deleteWorkingState(Long workbookId, com.ruoyi.ai.domain.dto.DraftDeleteRequest request);
     R<Map<String, Object>> commit(Long workbookId, CommitRequest request);
     R<List<Map<String, Object>>> commits(Long workbookId);
     R<Map<String, Object>> commitDetail(Long workbookId, String commitId);

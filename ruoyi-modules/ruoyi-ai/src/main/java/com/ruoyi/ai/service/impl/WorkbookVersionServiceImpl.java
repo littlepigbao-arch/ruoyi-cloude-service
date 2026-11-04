@@ -99,11 +99,18 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         if (auth.error != null) return R.fail(auth.error);
         agentWriteGuard.manual(workbookId, auth.userId);
         if (request == null || request.getContent() == null) return R.fail("工作草稿内容不能为空");
+        try {
+            com.fasterxml.jackson.databind.JsonNode snapshot = objectMapper.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(request.getContent());
+            if (snapshot == null || !snapshot.isObject()) return R.fail(422, "工作草稿必须是有效 JSON 对象");
+        } catch (Exception invalid) { return R.fail(422, "工作草稿 JSON 不完整或含多余内容"); }
+        if (request.getBranchId() == null || !request.getBranchId().equals(auth.workbook.getCurrentBranchId())) return R.fail(409, "草稿保存必须指定当前活动分支，请重新核实");
         Map<String, Object> branch = resolveBranch(workbookId, request.getBranchId(), auth.userId);
         if (branch == null) return R.fail("分支不存在或无权访问");
         branch = versionMapper.selectBranchForUpdate(workbookId, longValue(branch.get("branchId")), auth.userId);
         if (branch == null) return R.fail("分支不存在或无权访问");
         Map<String, Object> previousDraft = versionMapper.selectWorkingStateForUpdate(workbookId, longValue(branch.get("branchId")), auth.userId);
+        if (previousDraft != null && !ContentHashUtils.sha256(stringValue(previousDraft.get("content"))).equals(stringValue(previousDraft.get("contentHash")))) return R.fail(422, "已有草稿完整性校验失败");
+        if (previousDraft != null && !equalsNullable(stringValue(previousDraft.get("baseCommitId")), stringValue(branch.get("headCommitId")))) return R.fail(409, "已有草稿基线与 HEAD 不一致，请先核实");
         Long draftVersion = previousDraft == null ? -1L : longValue(previousDraft.get("version"));
         if (!draftVersion.equals(request.getExpectedDraftVersion())) return R.fail(409, "草稿版本已变化，请重新打开文档后再保存");
         String loadedContent = previousDraft == null ? auth.workbook.getContent() : stringValue(previousDraft.get("content"));
@@ -145,12 +152,34 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     @Transactional(rollbackFor = Exception.class)
     public R<Void> deleteWorkingState(Long workbookId, Long branchId)
     {
-        Auth auth = authWorkbook(workbookId);
-        if (auth.error != null) return R.fail(auth.error);
-        agentWriteGuard.manual(workbookId, auth.userId);
-        Map<String, Object> branch = resolveBranch(workbookId, branchId, auth.userId);
-        if (branch == null) return R.fail("分支不存在或无权访问");
-        versionMapper.deleteWorkingState(workbookId, longValue(branch.get("branchId")), auth.userId);
+        com.ruoyi.ai.domain.dto.DraftDeleteRequest request=new com.ruoyi.ai.domain.dto.DraftDeleteRequest();request.setBranchId(branchId);
+        return deleteWorkingState(workbookId,request);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public R<Void> deleteWorkingState(Long workbookId,com.ruoyi.ai.domain.dto.DraftDeleteRequest request) {
+        Auth auth=authWorkbook(workbookId);if(auth.error!=null)return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId,auth.userId);
+        if(request==null || !Boolean.TRUE.equals(request.getConfirmed()) || request.getBranchId()==null || request.getBaseVersion()==null)return R.fail(409,"丢弃需要明确确认和实际加载的分支/草稿版本");
+        if(!request.getBranchId().equals(auth.workbook.getCurrentBranchId()))return R.fail(409,"活动分支已变化，未丢弃草稿");
+        Map<String,Object> branch=versionMapper.selectBranchForUpdate(workbookId,request.getBranchId(),auth.userId);
+        if(branch==null)return R.fail("分支不存在或无权访问");
+        if(!request.getBaseVersion().equals(longValue(branch.get("version"))) || !equalsNullable(request.getBaseCommitId(),stringValue(branch.get("headCommitId"))))return R.fail(409,"HEAD 已变化，未丢弃草稿");
+        Map<String,Object> draft=versionMapper.selectWorkingStateForUpdate(workbookId,request.getBranchId(),auth.userId);
+        String error=draftBindingError(auth.workbook,draft,request.getExpectedDraftVersion(),request.getLoadedRevision());if(error!=null)return R.fail(409,error);
+        if(draft==null)return R.ok();
+        Map<String,Object> head=versionMapper.selectSnapshotByCommit(workbookId,stringValue(branch.get("headCommitId")),auth.userId);
+        if(head==null)return R.fail(409,"缺少可恢复的 HEAD 快照，未丢弃草稿");
+        String content=stringValue(head.get("content")),hash=ContentHashUtils.sha256(content);
+        if(!hash.equals(stringValue(head.get("contentHash"))))return R.fail(422,"HEAD 快照完整性校验失败，未丢弃草稿");
+        // Advance the branch generation even though HEAD is unchanged. Draft rows
+        // restart at version zero after recreation; old requests must not match
+        // a later draft with the same content and version.
+        if(versionMapper.updateBranchHead(workbookId,request.getBranchId(),auth.userId,request.getBaseVersion(),stringValue(branch.get("headCommitId")))!=1)return R.fail(409,"分支已经变化，未丢弃");
+        Map<String,Object> binding=new HashMap<>();binding.put("workbookId",workbookId);binding.put("branchId",request.getBranchId());binding.put("userId",auth.userId);binding.put("expectedDraftVersion",request.getExpectedDraftVersion());binding.put("loadedRevision",request.getLoadedRevision());
+        if(versionMapper.deleteWorkingStateCas(binding)!=1)throw new IllegalStateException("草稿已经变化，丢弃事务回滚");
+        if(workbookMapper.updateVersionPointers(workbookId,auth.userId,request.getBranchId(),stringValue(branch.get("headCommitId")),content,hash,auth.username)!=1)throw new IllegalStateException("丢弃后的 HEAD 恢复失败，事务回滚");
         return R.ok();
     }
 
@@ -164,8 +193,18 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         String validationError = validateCommitRequest(request, false);
         if (validationError != null) return R.fail(validationError);
         Map<String, Object> prior = versionMapper.selectCommitByOperation(workbookId, request.getOperationId());
-        if (prior != null) return R.ok(prior, "重复请求已返回首次提交结果");
-        Map<String, Object> branch = resolveBranch(workbookId, request.getBranchId(), auth.userId);
+        String requestHash = com.ruoyi.ai.agent.WriteManifest.digest(objectMapper.valueToTree(request));
+        if (prior != null) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode binding = objectMapper.readTree(stringValue(prior.get("validationJson")));
+                if (!requestHash.equals(binding.path("requestHash").asText()) || !binding.path("hashVerified").asBoolean() || !binding.path("branchVersionAfter").isIntegralNumber() || !binding.path("workbookVersionAfter").isIntegralNumber()) return R.fail(409, "operationId 已被其他参数或旧请求占用，或原提交身份不完整，请核实原提交");
+                prior.put("created", false);prior.put("branchVersion", binding.path("branchVersionAfter").asLong());prior.put("workbookVersion", binding.path("workbookVersionAfter").asLong());
+                return R.ok(prior, "重复请求已返回首次提交事实");
+            } catch (Exception invalid) { return R.fail(409, "历史提交缺少可核实的请求身份，请核实原提交"); }
+        }
+        if (request.getBranchId() == null || request.getExpectedDraftVersion() == null || request.getExpectedDraftVersion() < -1 || request.getLoadedRevision() == null || request.getLoadedRevision().isEmpty()) return R.fail(409, "缺少实际加载的分支/草稿版本，请保留编辑并升级客户端");
+        if (!request.getBranchId().equals(auth.workbook.getCurrentBranchId())) return R.fail(409, "活动分支已变化，请保留编辑并重新加载");
+        Map<String, Object> branch = versionMapper.selectBranchForUpdate(workbookId, request.getBranchId(), auth.userId);
         if (branch == null) return R.fail("分支不存在或无权访问");
         Long version = longValue(branch.get("version"));
         if (request.getBaseVersion() == null || !version.equals(request.getBaseVersion()))
@@ -176,13 +215,16 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         {
             return R.fail(409, "baseCommitId 与当前 HEAD 不一致");
         }
+        Map<String, Object> draft = versionMapper.selectWorkingStateForUpdate(workbookId, request.getBranchId(), auth.userId);
+        String draftError = draftBindingError(auth.workbook, draft, request);
+        if (draftError != null) return R.fail(409, draftError);
         Map<String, Object> created = createCommit(auth.workbook, branch, request.getCommitMessage().trim(),
                 request.getOperationId(), defaultValue(request.getSource(), "ai"),
                 json(request.getPlannedActions(), "[]"), json(request.getExecutedChanges(), "[]"),
                 json(request.getInverseChanges(), null), json(request.getDiffSummary(), "{}"),
                 json(request.getKnowledgeRefs(), "[]"), json(request.getDataContext(), "{}"),
                 json(request.getExecutionContext(), "{}"), auth.userId, auth.username, version,
-                request.getContent(), defaultValue(request.getActionSchemaVersion(), ACTION_SCHEMA_VERSION));
+                request.getContent(), defaultValue(request.getActionSchemaVersion(), ACTION_SCHEMA_VERSION), requestHash);
         return R.ok(created);
     }
 
@@ -245,6 +287,16 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         change.put("source", "revert");
         changes.add(change);
         request.setExecutedChanges(changes);
+        // A retry may return an immutable earlier fact; it must not consume a newer draft.
+        if (versionMapper.selectCommitByOperation(workbookId, request.getOperationId()) != null) return commit(workbookId, request);
+        agentWriteGuard.manual(workbookId, auth.userId);
+        if(request.getBranchId()==null || !request.getBranchId().equals(auth.workbook.getCurrentBranchId())) return R.fail(409,"活动分支已变化，请重新核实后恢复");
+        Map<String,Object> branch=versionMapper.selectBranchForUpdate(workbookId,request.getBranchId(),auth.userId);
+        if(branch==null)return R.fail("分支不存在或无权访问");
+        Map<String,Object> draft=versionMapper.selectWorkingStateForUpdate(workbookId,request.getBranchId(),auth.userId);
+        String draftError=draftBindingError(auth.workbook,draft,request);if(draftError!=null)return R.fail(409,draftError);
+        if(draft!=null){Map<String,Object> head=versionMapper.selectSnapshotByCommit(workbookId,stringValue(branch.get("headCommitId")),auth.userId);
+            if(head==null || !equalsNullable(stringValue(draft.get("contentHash")),stringValue(head.get("contentHash"))))return R.fail(409,"当前分支有未提交草稿，请先提交或核实保留后再恢复");}
         return commit(workbookId, request);
     }
 
@@ -286,82 +338,78 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public R<Map<String, Object>> checkout(Long workbookId, Long branchId, CheckoutRequest request)
-    {
+    public R<Map<String, Object>> checkout(Long workbookId, Long branchId, CheckoutRequest request) {
         Auth auth = authWorkbook(workbookId);
         if (auth.error != null) return R.fail(auth.error);
         agentWriteGuard.manual(workbookId, auth.userId);
-        if (request == null || request.getOperationId() == null || request.getOperationId().trim().isEmpty())
-            return R.fail("operationId 不能为空");
-        if (request.getCurrentBranchId() != null && !request.getCurrentBranchId().equals(auth.workbook.getCurrentBranchId()))
-            return R.fail(409, "当前分支已经变化，请重新加载");
-        if (request.getBaseCommitId() != null && !equalsNullable(auth.workbook.getHeadCommitId(), request.getBaseCommitId()))
-            return R.fail(409, "当前 HEAD 已经变化，请重新加载");
-        Map<String, Object> branch = resolveBranch(workbookId, branchId, auth.userId);
+        if (request == null || request.getOperationId() == null || request.getOperationId().trim().isEmpty()) return R.fail("operationId 不能为空");
+        if (branchId == null || request.getCurrentBranchId() == null || request.getBaseVersion() == null || request.getExpectedWorkbookVersion() == null)
+            return R.fail(409, "切换缺少实际加载的源分支和工作簿版本，请升级客户端");
+        if (!request.getCurrentBranchId().equals(auth.workbook.getCurrentBranchId()) || !request.getExpectedWorkbookVersion().equals(auth.workbook.getVersion()))
+            return R.fail(409, "活动分支或工作簿版本已变化，请重新核实");
+        if (branchId.equals(request.getCurrentBranchId())) return R.fail(409, "目标已是活动分支，请读取状态核实");
+        Map<String,Object> source = versionMapper.selectBranchForUpdate(workbookId, request.getCurrentBranchId(), auth.userId);
+        if (source == null || !request.getBaseVersion().equals(longValue(source.get("version"))) || !equalsNullable(request.getBaseCommitId(), stringValue(source.get("headCommitId"))))
+            return R.fail(409, "源分支 HEAD 或版本已变化");
+        Map<String,Object> sourceDraft = versionMapper.selectWorkingStateForUpdate(workbookId, request.getCurrentBranchId(), auth.userId);
+        String error = draftBindingError(auth.workbook, sourceDraft, request.getExpectedDraftVersion(), request.getLoadedRevision());
+        if (error != null) return R.fail(409, error);
+        Map<String,Object> branch = versionMapper.selectBranchForUpdate(workbookId, branchId, auth.userId);
         if (branch == null) return R.fail("目标分支不存在或无权访问");
-        Long targetBranchId = longValue(branch.get("branchId"));
         String targetHead = stringValue(branch.get("headCommitId"));
-        Map<String, Object> workingState = versionMapper.selectWorkingState(workbookId, targetBranchId, auth.userId);
-        String content;
-        String contentHash;
-        if (workingState != null && workingState.get("content") != null)
-        {
-            content = stringValue(workingState.get("content"));
-            contentHash = stringValue(workingState.get("contentHash"));
-        }
-        else
-        {
-            Map<String, Object> snapshot = versionMapper.selectSnapshotByCommit(workbookId, targetHead, auth.userId);
-            if (snapshot == null) return R.fail("目标分支快照不存在");
-            content = stringValue(snapshot.get("content"));
-            contentHash = stringValue(snapshot.get("contentHash"));
-        }
-        if (!ContentHashUtils.sha256(content).equals(contentHash)) return R.fail(422, "目标分支内容完整性校验失败");
-        workbookMapper.updateVersionPointers(workbookId, auth.userId, targetBranchId, targetHead, content, contentHash, auth.username);
-        Map<String, Object> result = new HashMap<>(branch);
-        result.put("content", content);
-        result.put("contentHash", contentHash);
-        result.put("workingState", workingState);
-        result.put("workbookVersion", auth.workbook.getVersion() == null ? 1L : auth.workbook.getVersion() + 1L);
+        if (request.getTargetVersion() == null || !request.getTargetVersion().equals(longValue(branch.get("version"))) || !equalsNullable(request.getTargetHeadCommitId(), targetHead))
+            return R.fail(409, "目标分支 HEAD 或版本已变化或缺失");
+        Map<String,Object> draft = versionMapper.selectWorkingStateForUpdate(workbookId, branchId, auth.userId);
+        Map<String,Object> snapshot = draft == null ? versionMapper.selectSnapshotByCommit(workbookId, targetHead, auth.userId) : draft;
+        if (snapshot == null || snapshot.get("content") == null) return R.fail(409, "目标分支内容不存在");
+        String content = stringValue(snapshot.get("content")), hash = ContentHashUtils.sha256(content);
+        if (!hash.equals(stringValue(snapshot.get("contentHash")))) return R.fail(422, "目标分支内容完整性校验失败");
+        if (draft != null && !equalsNullable(stringValue(draft.get("baseCommitId")), targetHead)) return R.fail(409, "目标草稿基线与 HEAD 不一致，请先核实");
+        long draftVersion = draft == null ? -1L : longValue(draft.get("version"));
+        if (request.getExpectedTargetDraftVersion() == null || request.getExpectedTargetDraftVersion() != draftVersion || !hash.equals(request.getTargetLoadedRevision()))
+            return R.fail(409, "目标草稿已变化或缺少已核实版本");
+        if (workbookMapper.updateVersionPointers(workbookId, auth.userId, branchId, targetHead, content, hash, auth.username) != 1)
+            throw new IllegalStateException("分支切换指针更新失败，事务回滚");
+        Map<String,Object> result = new HashMap<>(branch);
+        result.put("content", content); result.put("contentHash", hash); result.put("loadedRevision", hash);
+        result.put("workingState", draft); result.put("workbookVersion", auth.workbook.getVersion() + 1);
         return R.ok(result);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public R<Map<String, Object>> fastForwardToMain(Long workbookId, Long branchId, BranchIntegrateRequest request)
-    {
-        Auth auth = authWorkbook(workbookId);
-        if (auth.error != null) return R.fail(auth.error);
-        agentWriteGuard.manual(workbookId, auth.userId);
-        if (request == null || request.getOperationId() == null || request.getOperationId().trim().isEmpty())
-            return R.fail("operationId 不能为空");
-        Map<String, Object> draft = resolveBranch(workbookId, branchId, auth.userId);
-        if (draft == null || "main".equals(draft.get("branchName"))) return R.fail("请选择有效的草稿分支");
-        if (versionMapper.selectWorkingState(workbookId, branchId, auth.userId) != null)
-            return R.fail("草稿分支还有未提交变化，请先提交");
-        Map<String, Object> main = versionMapper.selectMainBranch(workbookId, auth.userId);
-        Long mainVersion = longValue(main.get("version"));
-        String mainHead = stringValue(main.get("headCommitId"));
-        if (request.getMainVersion() == null || !mainVersion.equals(request.getMainVersion()) ||
-                !equalsNullable(mainHead, request.getMainHeadCommitId()))
-            return R.fail(409, "main 已发生变化，请重新加载后比较");
-        String draftHead = stringValue(draft.get("headCommitId"));
-        if (!isAncestor(workbookId, mainHead, draftHead, auth.userId))
-            return R.fail(409, "main 与草稿已经分叉，必须进入 squash 和冲突选择流程，系统不会静默覆盖");
-        Map<String, Object> snapshot = versionMapper.selectSnapshotByCommit(workbookId, draftHead, auth.userId);
-        if (snapshot == null) return R.fail("草稿 HEAD 快照不存在");
-        String content = stringValue(snapshot.get("content"));
-        String hash = stringValue(snapshot.get("contentHash"));
-        if (!ContentHashUtils.sha256(content).equals(hash)) return R.fail(422, "草稿快照完整性校验失败");
-        int moved = versionMapper.updateBranchHead(workbookId, longValue(main.get("branchId")), auth.userId, mainVersion, draftHead);
-        if (moved == 0) return R.fail(409, "main 版本冲突，请重新加载");
-        workbookMapper.updateVersionPointers(workbookId, auth.userId, longValue(main.get("branchId")), draftHead,
-                content, hash, auth.username);
-        Map<String, Object> result = versionMapper.selectMainBranch(workbookId, auth.userId);
-        result.put("content", content);
-        result.put("contentHash", hash);
-        result.put("workbookVersion", auth.workbook.getVersion() == null ? 1L : auth.workbook.getVersion() + 1L);
-        return R.ok(result);
+    public R<Map<String,Object>> fastForwardToMain(Long workbookId,Long branchId,BranchIntegrateRequest request) {
+        Auth auth=authWorkbook(workbookId);if(auth.error!=null)return R.fail(auth.error);
+        agentWriteGuard.manual(workbookId,auth.userId);
+        if(request==null || request.getOperationId()==null || request.getOperationId().trim().isEmpty())return R.fail("operationId 不能为空");
+        if(branchId==null || !branchId.equals(auth.workbook.getCurrentBranchId()))return R.fail(409,"活动源分支已变化，请重新核实");
+        Map<String,Object> source=versionMapper.selectBranchForUpdate(workbookId,branchId,auth.userId);
+        if(source==null || "main".equals(source.get("branchName")))return R.fail("请选择有效草稿分支");
+        String sourceHead=stringValue(source.get("headCommitId"));
+        if(request.getSourceVersion()==null || !request.getSourceVersion().equals(longValue(source.get("version"))) || request.getSourceHeadCommitId()==null || !request.getSourceHeadCommitId().equals(sourceHead))return R.fail(409,"源分支版本已变化或缺失");
+        if(versionMapper.selectWorkingStateForUpdate(workbookId,branchId,auth.userId)!=null)return R.fail(409,"源分支还有未提交草稿，请先提交或核实丢弃");
+        Map<String,Object> main=versionMapper.selectMainBranch(workbookId,auth.userId);if(main==null)return R.fail("main 不存在");
+        Long mainId=longValue(main.get("branchId"));main=versionMapper.selectBranchForUpdate(workbookId,mainId,auth.userId);
+        long mainVersion=longValue(main.get("version"));String mainHead=stringValue(main.get("headCommitId"));
+        if(request.getMainVersion()==null || request.getMainVersion()!=mainVersion || !equalsNullable(request.getMainHeadCommitId(),mainHead))return R.fail(409,"main HEAD 或版本已变化");
+        Map<String,Object> mainDraft=versionMapper.selectWorkingStateForUpdate(workbookId,mainId,auth.userId),mainSnapshot=versionMapper.selectSnapshotByCommit(workbookId,mainHead,auth.userId);
+        if(mainSnapshot==null || !ContentHashUtils.sha256(stringValue(mainSnapshot.get("content"))).equals(stringValue(mainSnapshot.get("contentHash"))))return R.fail(422,"main HEAD 快照不完整，未合入");
+        String mainContent=mainDraft==null?stringValue(mainSnapshot.get("content")):stringValue(mainDraft.get("content")),loaded=ContentHashUtils.sha256(mainContent);long draftVersion=mainDraft==null?-1L:longValue(mainDraft.get("version"));
+        if(mainDraft!=null && !loaded.equals(stringValue(mainDraft.get("contentHash"))))return R.fail(422,"main 草稿完整性校验失败");
+        if(request.getExpectedMainDraftVersion()==null || request.getExpectedMainDraftVersion()!=draftVersion || !loaded.equals(request.getMainLoadedRevision()))return R.fail(409,"main 草稿已变化或缺少加载版本，未合入");
+        if(mainDraft!=null && (!loaded.equals(stringValue(mainSnapshot.get("contentHash"))) || !emptyAudit(mainDraft.get("draftActionsJson")) || !emptyAudit(mainDraft.get("executedChangesJson"))))return R.fail(409,"main 有未提交草稿，请先提交或明确处理，未合入");
+        if(!isAncestor(workbookId,mainHead,sourceHead,auth.userId))return R.fail(409,"main 与源分支已经分叉，未合入");
+        Map<String,Object> snapshot=versionMapper.selectSnapshotByCommit(workbookId,sourceHead,auth.userId);if(snapshot==null)return R.fail("源 HEAD 快照不存在");
+        String content=stringValue(snapshot.get("content")),hash=ContentHashUtils.sha256(content);if(!hash.equals(stringValue(snapshot.get("contentHash"))))return R.fail(422,"源 HEAD 快照不完整，未合入");
+        if(versionMapper.updateBranchHead(workbookId,mainId,auth.userId,mainVersion,sourceHead)!=1)return R.fail(409,"main 版本冲突");
+        if(mainDraft!=null){Map<String,Object> binding=new HashMap<>();binding.put("workbookId",workbookId);binding.put("branchId",mainId);binding.put("userId",auth.userId);binding.put("expectedDraftVersion",draftVersion);binding.put("loadedRevision",loaded);if(versionMapper.deleteWorkingStateCas(binding)!=1)throw new IllegalStateException("main 草稿已变化，合入事务回滚");}
+        if(workbookMapper.updateVersionPointers(workbookId,auth.userId,mainId,sourceHead,content,hash,auth.username)!=1)throw new IllegalStateException("main 指针更新失败，合入事务回滚");
+        Map<String,Object> result=versionMapper.selectMainBranch(workbookId,auth.userId);result.put("content",content);result.put("contentHash",hash);result.put("loadedRevision",hash);result.put("workingState",null);result.put("workbookVersion",auth.workbook.getVersion()==null?1L:auth.workbook.getVersion()+1);return R.ok(result);
+    }
+
+    private boolean emptyAudit(Object value) {
+        try {com.fasterxml.jackson.databind.JsonNode node=objectMapper.readTree(stringValue(value));return node.isArray()&&node.size()==0;}
+        catch(Exception invalid){return false;}
     }
 
     private boolean isAncestor(Long workbookId, String ancestorId, String descendantId, Long userId)
@@ -386,7 +434,7 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
     {
         return createCommit(workbook, branch, message, operationId, source, plannedJson, changesJson, inverseJson,
                 diffJson, knowledgeJson, dataJson, executionJson, userId, username, expectedVersion,
-                workbook.getContent(), ACTION_SCHEMA_VERSION);
+                workbook.getContent(), ACTION_SCHEMA_VERSION, null);
     }
 
     private Map<String, Object> createCommit(AiWorkbook workbook, Map<String, Object> branch, String message,
@@ -394,7 +442,7 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
                                               String changesJson, String inverseJson, String diffJson,
                                               String knowledgeJson, String dataJson, String executionJson,
                                               Long userId, String username, Long expectedVersion,
-                                              String content, String schemaVersion)
+                                              String content, String schemaVersion, String requestHash)
     {
         String commitId = UUID.randomUUID().toString();
         String snapshotId = UUID.randomUUID().toString();
@@ -427,7 +475,9 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         commit.put("executionContextJson", executionJson);
         commit.put("beforeHash", beforeHash);
         commit.put("afterHash", afterHash);
-        commit.put("validationJson", "{\"hashVerified\":true}");
+        Map<String,Object> validation = new HashMap<>();validation.put("hashVerified",true);
+        if(requestHash!=null){validation.put("requestHash",requestHash);validation.put("branchVersionAfter",expectedVersion+1);validation.put("workbookVersionAfter",workbook.getVersion()==null?1L:workbook.getVersion()+1);}
+        commit.put("validationJson", json(validation,"{}"));
         commit.put("snapshotId", snapshotId);
         versionMapper.insertCommit(commit);
         Map<String, Object> snapshot = new HashMap<>();
@@ -448,6 +498,19 @@ public class WorkbookVersionServiceImpl implements WorkbookVersionService
         commit.put("branchVersion", expectedVersion + 1);
         commit.put("workbookVersion", workbook.getVersion() == null ? 1L : workbook.getVersion() + 1);
         return commit;
+    }
+
+    private String draftBindingError(AiWorkbook book,Map<String,Object> draft,CommitRequest request) {
+        return draftBindingError(book,draft,request.getExpectedDraftVersion(),request.getLoadedRevision());
+    }
+
+    private String draftBindingError(AiWorkbook book,Map<String,Object> draft,Long expected,String loaded) {
+        if(expected==null || expected < -1 || loaded==null || loaded.isEmpty())return "缺少实际加载的草稿版本，请保留编辑并升级客户端";
+        long actual=draft==null?-1L:longValue(draft.get("version"));
+        String content=draft==null?book.getContent():stringValue(draft.get("content")),hash=ContentHashUtils.sha256(content);
+        if(draft!=null && !hash.equals(stringValue(draft.get("contentHash"))))return "工作草稿完整性校验失败，请保留编辑并核实";
+        if(expected!=actual || !hash.equals(loaded))return "草稿或页面加载内容已变化，请保留本地编辑并重新核实";
+        return null;
     }
 
     private String validateCommitRequest(CommitRequest request, boolean allowEmptyChanges)

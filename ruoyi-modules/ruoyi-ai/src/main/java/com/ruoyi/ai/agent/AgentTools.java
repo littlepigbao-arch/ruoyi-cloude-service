@@ -73,6 +73,7 @@ public class AgentTools {
             case "get_workbook_catalog": result = catalog(snapshot); break;
             case "inspect_sheet": result = inspect(sheet(snapshot,text(args,"sheetId"))); break;
             case "read_range": result = read(sheet(snapshot,text(args,"sheetId")),range(text(args,"range"))); break;
+            case "read_display": result = ReadDisplayTools.execute(snapshot,run,args); break;
             case "build_dataset": result = dataset(snapshot,args); break;
             case "aggregate_table": result = aggregate(data(run,args.get("dataset")),args); break;
             case "join_tables": result = join(data(run,args.get("left")),data(run,args.get("right")),args); break;
@@ -82,7 +83,8 @@ public class AgentTools {
             default: throw new IllegalArgumentException("未知服务端工具");
         }
         require(!"check_data_quality".equals(tool)||result.path("errors").asInt()==0,"RESULT_UNKNOWN: 数据质量检查存在违规，不能标记通过");
-        String id = store.artifact(run,result);
+        boolean datasetTool=Arrays.asList("build_dataset","aggregate_table","join_tables","derive_columns").contains(tool);
+        String id = datasetTool?store.artifact(run,result,resultLineage(run,tool,args,snapshot)):store.artifact(run,result);
         ObjectNode out = obj().put("resultRef",id).put("sourceRevision",run.path("revision").asText()).put("truncated",false).put("validation","PASSED");
         out.set("dataSummary",summary(result)); return out;
     }
@@ -91,6 +93,16 @@ public class AgentTools {
         ObjectNode record=store.artifactRecord(run,text(reference,"resultRef"));
         require(record.path("sourceRevision").asText().equals(reference.path("sourceRevision").asText()),"SOURCE_STALE: 引用声明与制品权威来源不一致");
         return record.path("data");
+    }
+    private ArrayNode resultLineage(ObjectNode run,String tool,JsonNode args,JsonNode snapshot){
+        if("build_dataset".equals(tool)){String sheetId=text(args,"sheetId");return arr().add(obj().put("sheetId",sheetId).put("range",text(args,"range")).put("sheetDigest",WriteManifest.digest(sheet(snapshot,sheetId))));}
+        ArrayNode merged=arr();Set<String> seen=new HashSet<>();String[] refs="join_tables".equals(tool)?new String[]{"left","right"}:new String[]{"dataset"};
+        for(String key:refs){ObjectNode record=store.artifactRecord(run,text(args.path(key),"resultRef"));JsonNode lineage=record.path("lineage");if(!lineage.isArray()||lineage.size()==0)return arr();for(JsonNode source:lineage){String identity=source.path("sheetId").asText()+":"+source.path("range").asText();if(seen.add(identity))merged.add(source.deepCopy());else for(JsonNode prior:merged)if(identity.equals(prior.path("sheetId").asText()+":"+prior.path("range").asText()))require(prior.equals(source),"SOURCE_STALE: 来源区域事实冲突");}}
+        require(merged.size()<=30,"SOURCE_BUDGET_EXCEEDED: 来源区域过多");return merged;
+    }
+    /** B9 server-owned expansion; invoked only by the gated controlled scheduler. */
+    public ObjectNode prepareResultWrite(ObjectNode run,JsonNode args,JsonNode snapshot){
+        ObjectNode record=store.artifactRecord(run,text(args.path("dataset"),"resultRef"));return ResultWriteManifest.create(run,record,snapshot,args);
     }
     public static ObjectNode summary(JsonNode data) {
         ObjectNode s = obj();
@@ -189,7 +201,7 @@ public class AgentTools {
         }}}
         require(!a.path("failOnViolation").asBoolean(true)||errors==0,"数据质量验证失败，共"+errors+"项");ObjectNode result=obj().put("errors",errors).put("checkedRows",d.path("rows").size());result.set("examples",examples);return result;
     }
-    public static ObjectNode verify(JsonNode snapshot,JsonNode a){JsonNode s=sheet(snapshot,text(a,"sheetId"));int[] r=range(text(a,"range"));String kind=text(a,"kind");require(Arrays.asList("non_empty","product","matches_write","matches_format").contains(kind),"未注册验证规则");if("matches_format".equals(kind))return verifyFormat(snapshot,a,s,r);int checked=0;
+    public static ObjectNode verify(JsonNode snapshot,JsonNode a){if("matches_structure".equals(a.path("kind").asText()))return StructureManifest.verifySaved(snapshot,a);JsonNode s=sheet(snapshot,text(a,"sheetId"));int[] r=range(text(a,"range"));String kind=text(a,"kind");require(Arrays.asList("non_empty","product","matches_write","matches_format","matches_filter","matches_formula","matches_merge","matches_structure").contains(kind),"未注册验证规则");if("matches_format".equals(kind))return verifyFormat(snapshot,a,s,r);if("matches_filter".equals(kind))return FilterManifest.verifySaved(snapshot,a,r);if("matches_formula".equals(kind))return FormulaManifest.verifySaved(snapshot,a,r);if("matches_merge".equals(kind))return MergeManifest.verifySaved(snapshot,a);if("matches_structure".equals(kind))return StructureManifest.verifySaved(snapshot,a);int checked=0;
         if("matches_write".equals(kind)){
             JsonNode write=a.path("write"),patches=write.path("executedChange").path("cells");
             require(WriteManifest.isControlledTransport(write.path("transportVersion"))&&"SAVED".equals(write.path("persistenceStatus").asText())&&"PASSED".equals(write.path("validation").asText())&&"controlled-values".equals(write.path("executedChange").path("kind").asText()),"RESULT_UNKNOWN: 缺少可信已保存受控变更");

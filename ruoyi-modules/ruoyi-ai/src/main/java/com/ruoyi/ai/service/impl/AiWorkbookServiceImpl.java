@@ -92,23 +92,7 @@ public class AiWorkbookServiceImpl implements AiWorkbookService
             {
                 return R.fail("文档不存在或无权访问");
             }
-            if (workbook.getVersion() == null)
-            {
-                return R.fail(409, "缺少文档版本，请重新打开文档后再保存");
-            }
-            // 校验同名文档（排除自身）
-            if (workbookMapper.countByNameAndUserId(workbook.getName(), userId, workbook.getWorkbookId()) > 0)
-            {
-                return R.fail("文件名已存在");
-            }
-            workbook.setType(workbook.getType() == null || workbook.getType().trim().isEmpty()
-                    ? exist.getType() : workbook.getType());
-            workbook.setUpdateBy(username);
-            int updated = workbookMapper.updateWorkbook(workbook);
-            if (updated == 0)
-            {
-                return R.fail(409, "文档已在其他页面更新，当前内容未覆盖服务器版本");
-            }
+            return R.fail(409, "已有文档内容请通过 working-state 保存分支草稿；旧整本更新入口已停止写入，请升级客户端。名称修改请使用 rename");
         }
 
         // 回读一次，确保返回完整信息

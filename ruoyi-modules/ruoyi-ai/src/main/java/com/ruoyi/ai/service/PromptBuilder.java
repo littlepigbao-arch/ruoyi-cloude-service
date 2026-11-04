@@ -42,6 +42,61 @@ public class PromptBuilder
         if (formatOpen) messages.get(0).put("content", B5_SYSTEM_PROMPT);
         return messages;
     }
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen)
+    {
+        List<Map<String, String>> messages = buildMessages(req, dbHistory, formatOpen);
+        if (filterOpen) messages.get(0).put("content", B5_SYSTEM_PROMPT.replace("筛选写入、公式和其他未注册操作禁止。", "公式和其他未注册操作禁止。") + "\n"
+            + "B6 筛选写入一次只提出一条动作，必须明确 target:{sheetId,range}，range 是含表头且最多1000格的完整授权范围。"
+            + "setFilter 仅支持 columnIndex（0-based 绝对列索引）与 filters（1至20个唯一短文本）；数值精确匹配以字符串值传入。示例：{\"schemaVersion\":\"2.0\",\"type\":\"setFilter\",\"target\":{\"sheetId\":\"来自context\",\"range\":\"A1:A4\"},\"columnIndex\":0,\"filters\":[\"Alice\"]}。"
+            + "clearFilter 必须使用同一明确目标；指定 columnIndex 清该列条件，或 removeFilter:true 移除整个 Filter。自动范围、condition、customFormula、多列条件均不支持；无法明确时输出空 actions。只读 getFilter 不保存。"
+            + "筛选执行后须待资源、可见行回读与服务端 CAS 保存，不可提前声称成功。");
+        return messages;
+    }
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen, boolean formulaOpen)
+    {
+        List<Map<String, String>> messages=buildMessages(req,dbHistory,formatOpen,filterOpen);
+        if(formulaOpen)messages.get(0).put("content",messages.get(0).get("content")
+            .replace("禁止公式、富文本", "禁止未注册公式、富文本")
+            .replace("筛选写入、公式和其他未注册操作禁止。", "筛选写入和其他未注册操作禁止。")
+            .replace("公式和其他未注册操作禁止。", "其他未注册操作禁止。")
+            +"\nB7 公式仅支持独立单个 setFormula 或 sumToCell V2 动作，target:{sheetId,range}，formula 为两个整数单元格引用的 + - * /（须整除）或 SUM(整数矩形范围)。"
+            +"目标必须为空，来源无现存公式，目标最多1000格；允许 $ 绝对/混合引用并按目标逐格平移。示例：{\"schemaVersion\":\"2.0\",\"type\":\"setFormula\",\"target\":{\"sheetId\":\"来自context\",\"range\":\"C1:C2\"},\"formula\":\"=A1+B1\"}。"
+            +"sumToCell 示例：{\"schemaVersion\":\"2.0\",\"type\":\"sumToCell\",\"target\":{\"sheetId\":\"来自context\",\"range\":\"C1\"},\"sourceRange\":\"A1:B2\"}；仅同Sheet整数来源和单空目标，沿用全部B7限制。旧targetRange可替代target.range，两个字段不得冲突；不要输出V1或跨Sheet来源。"
+              +"不支持任意函数、非整数缓存、递归依赖或无界区域；回读公式和缓存并经服务端 CAS 保存前不得声称成功。");
+        return messages;
+    }
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen, boolean formulaOpen, boolean mergeOpen)
+    {
+        List<Map<String, String>> messages=buildMessages(req,dbHistory,formatOpen,filterOpen,formulaOpen);
+        if(mergeOpen)messages.get(0).put("content",messages.get(0).get("content")
+            +"\nB8b 合并或拆分仅支持独立单个 V2 merge/breakApart，target:{sheetId,range} 必须明确且为完整授权矩形。merge 仅默认模式；非主格有值须明确 force:true，富内容、公式、重叠合并和部分解除拒绝。breakApart 仅精确解除既有合并。示例：{\"schemaVersion\":\"2.0\",\"type\":\"merge\",\"target\":{\"sheetId\":\"来自context\",\"range\":\"A1:B2\"}}。必须由原前端执行并回读保存后才能声称成功。");
+        return messages;
+    }
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen, boolean formulaOpen, boolean mergeOpen, boolean structureOpen)
+    {
+        List<Map<String, String>> messages=buildMessages(req,dbHistory,formatOpen,filterOpen,formulaOpen,mergeOpen);
+        if(structureOpen)messages.get(0).put("content",messages.get(0).get("content")
+            +"\nB8c 第一组仅支持单个 V2 insertRows/deleteRows/insertColumns/deleteColumns，target:{sheetId}，必须明确 1-based 位置与 count（1至10），整张最多1000格工作表需作为 writeScopes 显式授权。插入 position 仅 at/after；删除需 force:true 和 confirmed 覆盖。含公式、合并、活动筛选或其他活动资源的工作簿拒绝。写后原前端回读并经服务端 CAS 保存前不得声称成功。");
+        return messages;
+    }
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen, boolean formulaOpen, boolean mergeOpen, boolean structureOpen, boolean sheetOpen)
+    {
+        List<Map<String, String>> messages=buildMessages(req,dbHistory,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen);
+        if(sheetOpen)messages.get(0).put("content",messages.get(0).get("content")
+            +"\nB8c Sheet 第一子组只允许单个 V2 createSheet，target.sheetId 指现有锚点，newSheetName、rowCount、columnCount 必填。必须选中锚点整张有限工作表并确认结构变更；服务端生成稳定新 Sheet ID。总工作簿不超过1000格，公式、活动资源、同名及越界拒绝。仅在前端执行、全工作簿回读与受控 CAS 保存后声称成功。");
+        return messages;
+    }
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen, boolean formulaOpen, boolean mergeOpen, boolean structureOpen, boolean sheetOpen, boolean renameOpen){return buildMessages(req,dbHistory,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,false);}
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen, boolean formulaOpen, boolean mergeOpen, boolean structureOpen, boolean sheetOpen, boolean renameOpen,boolean copyOpen){return buildMessages(req,dbHistory,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen,renameOpen,copyOpen,false);}
+    public List<Map<String, String>> buildMessages(ChatRequest req, List<AiMessage> dbHistory, boolean formatOpen, boolean filterOpen, boolean formulaOpen, boolean mergeOpen, boolean structureOpen, boolean sheetOpen, boolean renameOpen,boolean copyOpen,boolean deleteOpen)
+    {
+        List<Map<String, String>> messages=buildMessages(req,dbHistory,formatOpen,filterOpen,formulaOpen,mergeOpen,structureOpen,sheetOpen);
+        if(deleteOpen)messages.get(0).put("content",messages.get(0).get("content")+"\nB8c deleteSheet 只允许单个 V2，target.sheetId 为删除表，fallbackSheetId 必须是不同的可见保留表，force:true，目标整表显式授权并确认覆盖；禁止删除最后一表、公式/合并/活动资源依赖和超1000格预算。前端切换保留表并删除，完整工作簿回读及受控保存后才称成功。");
+        if(copyOpen)messages.get(0).put("content",messages.get(0).get("content")+"\nB8c copySheet 只允许单个 V2 copySheet，target.sheetId 指源 Sheet，newSheetName 必填；整表显式授权并确认结构变更，总工作簿1000格。公式、合并、活动资源及同名拒绝。ID 由服务端稳定生成，完整工作簿回读并受控保存前不得称成功。");
+        if(renameOpen)messages.get(0).put("content",messages.get(0).get("content")
+            +"\nB8c Sheet 重命名只允许单个 V2 renameSheet，target.sheetId 为现有目标，newSheetName 必填；目标整张有限范围显式授权并确认结构变更。重复名称、公式、活动资源和超预算工作簿拒绝。前端执行并回读完整工作簿后，经服务端受控 CAS 保存才能声称成功。");
+        return messages;
+    }
 
     /**
      * 组装大模型 messages 数组
