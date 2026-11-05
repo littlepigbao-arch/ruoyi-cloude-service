@@ -104,7 +104,8 @@ public class B5ControllerHttpMysqlTest extends TestCase {
         if(body!=null){conn.setDoOutput(true);conn.setRequestProperty("Content-Type","application/json");
             byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);try(OutputStream out=conn.getOutputStream()){out.write(bytes);}}
         int status=conn.getResponseCode();assertEquals("HTTP transport failed",200,status);
-        try(InputStream in=conn.getInputStream()){return parse(new String(in.readAllBytes(),StandardCharsets.UTF_8));}
+        try(InputStream in=conn.getInputStream()){ByteArrayOutputStream buf=new ByteArrayOutputStream();byte[] b=new byte[8192];
+            for(int n;(n=in.read(b))!=-1;)buf.write(b,0,n);return parse(new String(buf.toByteArray(),StandardCharsets.UTF_8));}
         finally{conn.disconnect();}
     }
     private ObjectNode format(String type){
