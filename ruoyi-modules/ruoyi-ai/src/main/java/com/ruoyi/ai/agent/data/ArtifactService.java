@@ -200,7 +200,13 @@ public class ArtifactService {
      */
     public void assertReadable(String id, long userId) { readableRow(id, userId); }
     /** Keyset paging over stable ascending chunk_index: cursor is the previous page's nextCursor (null = first page), one chunk per page. */
-    public ObjectNode readChunkPage(String id, long userId, Long cursor) {
+    public ObjectNode readChunkPage(String id, long userId, Long cursor) { return readChunkPage(id, userId, cursor, null); }
+    /** C3-review F2: precision-preserving variant for consumers whose cell values must survive the read
+     *  as exact decimals (import preview). Identical gate, sequence, slice, hash and row-count checks -
+     *  only the chunk blob's parse differs: a caller-supplied mapper with floats-as-BigDecimal replaces
+     *  the default parse whose DoubleNode materialization silently re-rounded long literals. A null
+     *  mapper keeps the historical behavior, so every existing caller is unchanged. */
+    public ObjectNode readChunkPage(String id, long userId, Long cursor, com.fasterxml.jackson.databind.ObjectMapper preciseMapper) {
         Map<String, Object> row = readableRow(id, userId);
         require("chunked".equals(String.valueOf(row.get("storage_kind"))), "ARTIFACT_NOT_CHUNKED: 仅分块制品支持逐块读取");
         // C1r-F4: reject a cursor outside the lossless int range before any intValue() narrowing could
@@ -222,7 +228,10 @@ public class ArtifactService {
         // C1r-F3: a later page validates its own row_start/row_count against its chunk index and slice position.
         requireSliceConsistent(row, ((Number) chunk.get("chunk_index")).intValue(), ((Number) chunk.get("row_start")).intValue(), ((Number) chunk.get("row_count")).intValue(), next == null);
         String blob = verifiedBlob(id, String.valueOf(chunk.get("chunk_index")), String.valueOf(chunk.get("content_blob")), chunk.get("content_hash"));
-        JsonNode content = parse(blob);
+        JsonNode content;
+        try { content = preciseMapper == null ? parse(blob) : preciseMapper.readTree(blob); }
+        catch (IllegalArgumentException e) { throw e; }
+        catch (Exception e) { throw new IllegalArgumentException("ARTIFACT_INVALID: 分块内容不是有效 JSON", e); }
         require(content.isArray(), "ARTIFACT_INVALID: 分块内容不是行数组");
         // C1r2-F3: content consistency - the parsed rows must be exactly the declared row_count. A blob
         // rewritten to [] with its own content_hash re-synced used to serve a page claiming n rows with 0.
