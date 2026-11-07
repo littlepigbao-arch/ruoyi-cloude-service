@@ -36,6 +36,8 @@ public class AgentRunService implements DisposableBean {
     private final TransactionTemplate tx;
     private final AgentPlanningDispatcher planning=new AgentPlanningDispatcher(2,8);
     @org.springframework.beans.factory.annotation.Autowired(required=false) private ControlledWriteService controlled;
+    /** C2 hook: batched runs never plan or replay - the batch service settles them under the same locks. */
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private BatchWriteService batched;
     public boolean controlledWritesEnabled(){return controlled!=null&&controlled.enabled();}
     public boolean formatActionsEnabled(){return controlled!=null&&controlled.formatActionsEnabled();}
     public boolean filterActionsEnabled(){return controlled!=null&&controlled.filterActionsEnabled();}
@@ -187,7 +189,12 @@ public class AgentRunService implements DisposableBean {
         Map<String,Object> state=new HashMap<>();state.put("workbookId",w);state.put("branchId",b);state.put("ownerUserId",u);state.put("baseCommitId",branch.get("headCommitId"));state.put("draftActionsJson",actions.toString());state.put("executedChangesJson",changes.toString());state.put("content",snapshot.toString().getBytes(StandardCharsets.UTF_8));state.put("contentHash",ContentHashUtils.sha256(snapshot.toString()));versions.upsertWorkingState(state);
         r.put("revision",hash(snapshot));r.set("expectedSnapshot",snapshot);r.put("persistenceStatus","SAVED");store.event(r,"SAVED","步骤已回读核对并保存工作草稿，未创建正式Commit");
     }
-    public ObjectNode cancel(String id,long user){return mutate(id,user,r->{if(terminal(r))return view(r);r.put("status","CANCELLING").put("cancelRequested",true);if(controlled!=null&&controlled.reconcileLifecycleLocked(r))return view(r);JsonNode c=r.path("call");if(Arrays.asList("CLAIMED","UNKNOWN").contains(c.path("status").asText())){store.event(r,"CANCELLING","等待在途写入核实；请重新加载服务器草稿后确认停止");}else{if(c.path("transportVersion").asInt()==2&&"PENDING".equals(c.path("status").asText())){((ObjectNode)c).put("status","CANCELLED");store.call(r,(ObjectNode)c);}finish(r,"CANCELLED","任务已停止，已保存的步骤仍然保留");}return view(r);});}
+    public ObjectNode cancel(String id,long user){return mutate(id,user,r->{if(terminal(r))return view(r);r.put("status","CANCELLING").put("cancelRequested",true);
+        // C2-review P1②: a batched run never bypasses the batch ledger on cancel - in-flight batches are
+        // isolated (UNKNOWN+fencing bump) first and the cancellation finalizes only after server-verified
+        // settlement (reconcile); the lease protection stays held until then.
+        if(BatchWriteService.ownsBatchedLifecycle(r)){require(batched!=null,"AI_CAPABILITY_BLOCKED: 批次服务未启用，无法安全取消批次任务");batched.cancelRunLocked(r);return view(r);}
+        if(controlled!=null&&controlled.reconcileLifecycleLocked(r))return view(r);JsonNode c=r.path("call");if(Arrays.asList("CLAIMED","UNKNOWN").contains(c.path("status").asText())){store.event(r,"CANCELLING","等待在途写入核实；请重新加载服务器草稿后确认停止");}else{if(c.path("transportVersion").asInt()==2&&"PENDING".equals(c.path("status").asText())){((ObjectNode)c).put("status","CANCELLED");store.call(r,(ObjectNode)c);}finish(r,"CANCELLED","任务已停止，已保存的步骤仍然保留");}return view(r);});}
     public ObjectNode resume(String id,long user,ObjectNode req){return mutate(id,user,r->{require(Arrays.asList("PAUSED","CANCELLING","WAITING_USER").contains(r.path("status").asText()),"当前状态不能恢复");
         JsonNode trusted=current(r.path("workbookId").asLong(),r.path("branchId").asLong(),user);
         require(req.path("reloadedServerDraft").asBoolean()&&hash(trusted).equals(text(req,"expectedRevision")),"必须先重新加载服务器草稿，核实在途结果");
@@ -210,7 +217,11 @@ public class AgentRunService implements DisposableBean {
             }else{require(Arrays.asList("PENDING","CLAIMED","UNKNOWN","CANCELLED").contains(c.path("status").asText()),"RESULT_UNKNOWN: 调用状态不能安全取消");c.put("status","CANCELLED").put("resolution","server-draft-reloaded");store.call(r,c);}}
             r.remove(Arrays.asList("call","proposal"));
         }
-        if(r.path("cancelRequested").asBoolean()){finish(r,"CANCELLED","在途调用已隔离，保留已保存步骤并停止");return view(r);}
+        if(r.path("cancelRequested").asBoolean()){
+            // C2-review P1②: resume must not finalize a batched cancellation either - the batch ledger
+            // isolates in-flight batches and only server-verified settlement (reconcile) may finalize.
+            if(BatchWriteService.ownsBatchedLifecycle(r)){require(batched!=null,"RESULT_UNKNOWN: 批次服务未启用，取消需经服务端核实");batched.cancelRunLocked(r);return view(r);}
+            finish(r,"CANCELLED","在途调用已隔离，保留已保存步骤并停止");return view(r);}
         r.put("status","PAUSED");store.event(r,"RECONCILED","已核对服务器草稿并更新fencing token；A1 不重放旧任务，可安全取消");return view(r);
     });}
     public ObjectNode answer(String id,long user,ObjectNode req){return mutate(id,user,r->{require(Arrays.asList("WAITING_USER","PAUSED","EXECUTING").contains(r.path("status").asText()),"当前状态不能追加条件");String answer=text(req,"answer");require(answer.length()<=4000,"补充条件过长");((ArrayNode)r.path("constraints")).add(answer);if(blockUnsafeReplan(r))return view(r);r.put("status",r.has("plan")?"REPLANNING":"QUEUED");r.remove("question");store.event(r,"USER_ANSWER","已保存用户补充条件，等待修订未完成步骤");return view(r);});}
@@ -241,6 +252,7 @@ public class AgentRunService implements DisposableBean {
                 }}catch(Exception e){LOG.warn("Agent run {} paused: {}",id,e.getMessage());try{mutate(id,user,r->{if(!terminal(r))pause(r,e.getMessage());return null;});}catch(Exception ignored){LOG.warn("Agent state unavailable: {}",id);}}}}catch(Exception e){LOG.warn("Agent scheduler unavailable; check migration: {}",e.getMessage());}}
     @Override public void destroy(){planning.close();}
     private ObjectNode advance(ObjectNode r){if(terminal(r))return null;
+        if(batched!=null&&BatchWriteService.ownsBatchedLifecycle(r)){batched.reconcileRunLocked(r);return null;}
         if(controlled!=null&&controlled.reconcileLifecycleLocked(r))return null;
         try{lease(r);}catch(Exception e){if(r.has("call")&&"CLAIMED".equals(r.path("call").path("status").asText())){((ObjectNode)r.get("call")).put("status","UNKNOWN");store.call(r,(ObjectNode)r.get("call"));}pause(r,"浏览器断线或租约过期；重新加载草稿后恢复，不能重放未知写入");return null;}
         if(System.currentTimeMillis()>=r.path("deadline").asLong()){if(!"PAUSED".equals(r.path("status").asText()))pause(r,"任务时间预算已耗尽；请核实或取消，不自动重放");return null;}
